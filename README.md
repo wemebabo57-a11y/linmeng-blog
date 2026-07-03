@@ -270,6 +270,6 @@ rm setup.php
 
 **Made with ❤️ by [林梦](https://kslinmeng.cn)**
 
-© 2024 KSLinMeng Blog · Version 2.2.2
+© 2026 KSLinMeng Blog · Version 2.2.2
 
 </div>
