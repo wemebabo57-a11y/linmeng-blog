@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="robots" content="noindex, nofollow">
+    <title>服务暂时不可用 | 林梦的博客</title>
+    <style>
+        :root {
+            --bg: #f7f3ed;
+            --text: #2b2724;
+            --text-muted: #6b5d50;
+            --accent: #a6682e;
+            --border: #e5dccf;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body {
+            font-family: "LXGW WenKai", "PingFang SC", "Microsoft YaHei", system-ui, sans-serif;
+            background: var(--bg);
+            color: var(--text);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 2rem;
+        }
+        .container {
+            text-align: center;
+            max-width: 540px;
+        }
+        .code {
+            font-family: "Playfair Display", Georgia, serif;
+            font-size: clamp(5rem, 3rem + 8vw, 8rem);
+            font-weight: 700;
+            line-height: 1;
+            color: var(--accent);
+            letter-spacing: -0.04em;
+            margin-bottom: 1rem;
+        }
+        .title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            margin-bottom: 0.75rem;
+        }
+        .message {
+            color: var(--text-muted);
+            margin-bottom: 2rem;
+            line-height: 1.7;
+        }
+        .btn {
+            display: inline-block;
+            padding: 0.75rem 1.5rem;
+            border-radius: 8px;
+            text-decoration: none;
+            font-weight: 500;
+            background: var(--accent);
+            color: #fff;
+            transition: opacity 0.2s ease;
+        }
+        .btn:hover { opacity: 0.85; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="code">50x</div>
+        <h1 class="title">服务暂时不可用</h1>
+        <p class="message">服务器遇到临时问题，正在紧急处理。<br>请稍后再试，或前往首页查看其他内容。</p>
+        <a href="/" class="btn">返回首页</a>
+    </div>
+</body>
+</html>
