@@ -15,7 +15,7 @@
 
         if (!generateBtn) return;
 
-        // 浏览器流式读取能力检测：fetch + ReadableStream + TextDecoder
+        // AI 摘要统一使用 fetch + ReadableStream 读取 SSE。
         var streamSupported = (typeof fetch !== 'undefined')
             && (typeof ReadableStream !== 'undefined')
             && (typeof TextDecoder !== 'undefined');
@@ -57,6 +57,10 @@
                 showError('文章信息异常');
                 return;
             }
+            if (!streamSupported) {
+                showError('当前浏览器不支持流式摘要，请升级浏览器后重试');
+                return;
+            }
 
             setVisible(contentBox, false);
             setVisible(errorBox, false);
@@ -64,42 +68,12 @@
             contentBox.textContent = '';
             generateBtn.disabled = true;
 
-            var bodyParts = [
+            var body = [
                 'article_id=' + encodeURIComponent(articleId),
                 'provider_id=' + encodeURIComponent(providerId),
-                encodeURIComponent(csrfName) + '=' + encodeURIComponent(token)
-            ];
-            // 默认走流式；不支持流式的旧浏览器回退普通 JSON
-            if (streamSupported) {
-                bodyParts.push('stream=1');
-            }
-            var body = bodyParts.join('&');
-
-            if (!streamSupported) {
-                // 旧浏览器：普通 JSON 一次性返回
-                fetch('/api/ai-summary.php', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/x-www-form-urlencoded',
-                        'X-Requested-With': 'XMLHttpRequest'
-                    },
-                    body: body
-                })
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    if (data && data.success) {
-                        contentBox.textContent = data.summary || '';
-                        setVisible(contentBox, true);
-                        finishOk();
-                    } else {
-                        showError(data && data.message ? data.message : '生成失败，请稍后重试');
-                    }
-                })
-                .catch(function() {
-                    showError('网络错误，请稍后重试');
-                });
-                return;
-            }
+                encodeURIComponent(csrfName) + '=' + encodeURIComponent(token),
+                'stream=1'
+            ].join('&');
 
             // 流式读取
             fetch('/api/ai-summary.php', {

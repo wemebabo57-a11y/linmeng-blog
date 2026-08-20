@@ -19,13 +19,13 @@ $error = '';
 $success = '';
 
 // 处理删除
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_sponsor' && isset($_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         die('CSRF验证失败');
     }
 
-    $id = (int)$_GET['id'];
+    $id = (int)$_POST['id'];
     try {
         db()->delete('lm_sponsor', 'id = ?', [$id]);
         $success = '赞助商已删除';
@@ -217,9 +217,12 @@ require_once LM_ROOT . '/admin/template/header.php';
                                 data-edit-sponsor-icon="<?php echo e($sponsor['icon']); ?>"
                                 data-edit-sponsor-sort="<?php echo (int)$sponsor['sort_order']; ?>"
                                 data-edit-sponsor-status="<?php echo (int)$sponsor['status']; ?>">编辑</button>
-                        <a href="?action=delete&id=<?php echo $sponsor['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                           class="btn btn-sm btn-danger"
-                           data-confirm="确定要删除该赞助商吗？">删除</a>
+                        <form method="POST" action="" class="form-delete-sponsor" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="delete_sponsor">
+                            <input type="hidden" name="id" value="<?php echo (int)$sponsor['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该赞助商吗？">删除</button>
+                        </form>
                     </td>
                 </tr>
                 <?php endforeach; ?>

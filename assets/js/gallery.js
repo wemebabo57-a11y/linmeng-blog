@@ -118,18 +118,25 @@
         });
     });
 
-    // 查看大图（使用灯箱）
+    // 查看大图（使用统一灯箱）
     document.querySelectorAll('.gallery-btn-view').forEach(function(btn) {
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             var src = this.dataset.src;
-            if (src) {
-                var lightbox = document.querySelector('.lightbox');
-                var lightboxImg = lightbox ? lightbox.querySelector('img') : null;
-                if (lightboxImg) {
-                    lightboxImg.src = src;
-                    lightbox.classList.add('active');
-                }
+            if (!src) return;
+
+            if (typeof window.lmOpenLightbox === 'function') {
+                window.lmOpenLightbox(src, this.closest('.gallery-item')?.querySelector('img')?.alt || '预览图片', this);
+                return;
+            }
+
+            var lightbox = document.querySelector('.lightbox');
+            var lightboxImg = lightbox ? lightbox.querySelector('img') : null;
+            if (lightboxImg && lightbox) {
+                lightboxImg.src = src;
+                lightboxImg.alt = '预览图片';
+                lightbox.setAttribute('aria-hidden', 'false');
+                lightbox.classList.add('active');
             }
         });
     });

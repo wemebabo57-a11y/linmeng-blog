@@ -2,6 +2,7 @@
 /**
  * 站点访问人数统计 API
  * 通过 Cookie 去重，避免刷新重复计数
+ * 同时承接文章浏览量的前端异步上报（页面交给 CDN 缓存后不再在渲染时同步累加）
  */
 define('LM_ROOT', dirname(__DIR__));
 
@@ -12,7 +13,9 @@ require_once LM_ROOT . '/includes/functions.php';
 
 header('Content-Type: application/json');
 
-session_start();
+// 注：不再 session_start()。
+// 匿名令牌由 Security::validateToken 的无状态分支校验；
+// 已登录用户携带会话令牌时由 validateToken 惰性恢复会话校验。
 
 // 只允许 POST 请求
 if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
@@ -27,8 +30,30 @@ if (!Security::validateToken($token)) {
     exit;
 }
 
-// 速率限制：每 IP 60 次/小时，防止刷数
 $clientIp = Security::getClientIp();
+
+// ===== 文章浏览量上报（main.js 在文章页自动触发） =====
+$articleId = isset($_POST['article_id']) ? (int)$_POST['article_id'] : 0;
+if ($articleId > 0) {
+    // 速率限制：每 IP 每小时最多 240 次，防止刷浏览量
+    if (!Security::checkRateLimit($clientIp, 'article_view', 240, 3600)) {
+        echo json_encode(['success' => false, 'message' => '请求过于频繁']);
+        exit;
+    }
+    try {
+        db()->query(
+            "UPDATE lm_article SET views = views + 1 WHERE id = ? AND status = 'published'",
+            [$articleId]
+        );
+    } catch (Exception $e) {
+        // 计数失败静默处理，不影响前端
+    }
+    echo json_encode(['success' => true]);
+    exit;
+}
+
+// ===== 访客统计（原有逻辑） =====
+// 速率限制：每 IP 60 次/小时，防止刷数
 if (!Security::checkRateLimit($clientIp, 'visit_count', 60, 3600)) {
     echo json_encode(['success' => false, 'message' => '请求过于频繁']);
     exit;

@@ -131,57 +131,276 @@ class Security {
     }
 
     /**
-     * 富文本XSS过滤（允许部分HTML标签）
-     * 使用更安全的白名单方式
+     * 富文本XSS过滤（允许部分HTML标签及安全属性）
+     *
+     * 采用 DOMDocument 白名单方式：保留指定标签的指定属性，
+     * 既防 XSS 又保留作者在后台所做的排版（style / class / align / width 等）。
+     * 旧的 strip_tags 实现会无差别删除所有属性，导致排版丢失，故废弃。
+     *
+     * 仅用于受信任作者（后台管理员）提交的富文本，仍做严格属性过滤。
      */
     public static function xssCleanHtml($html) {
-        // 定义允许的标签和属性白名单
-        $allowedTags = [
-            'p' => [],
-            'br' => [],
-            'strong' => [],
-            'b' => [],
-            'em' => [],
-            'i' => [],
-            'u' => [],
-            'h1' => [], 'h2' => [], 'h3' => [], 'h4' => [], 'h5' => [], 'h6' => [],
-            'ul' => [],
-            'ol' => [],
-            'li' => [],
-            'blockquote' => [],
-            'code' => [],
-            'pre' => [],
-            'a' => ['href', 'title'],
-            'img' => ['src', 'alt', 'title'],
-            'span' => [],
-            'div' => []
+        if ($html === '' || $html === null) {
+            return '';
+        }
+
+        // 标签白名单 => 允许的属性白名单
+        $allowed = [
+            'p'          => ['style', 'class', 'align'],
+            'span'       => ['style', 'class'],
+            'div'        => ['style', 'class', 'align'],
+            'br'         => ['style', 'class'],
+            'hr'         => ['style', 'class'],
+            'strong'     => ['style', 'class'],
+            'b'          => ['style', 'class'],
+            'em'         => ['style', 'class'],
+            'i'          => ['style', 'class'],
+            'u'          => ['style', 'class'],
+            's'          => ['style', 'class'],
+            'del'        => ['style', 'class'],
+            'ins'        => ['style', 'class'],
+            'mark'       => ['style', 'class'],
+            'small'      => ['style', 'class'],
+            'sub'        => ['style', 'class'],
+            'sup'        => ['style', 'class'],
+            'abbr'       => ['style', 'class', 'title'],
+            'cite'       => ['style', 'class'],
+            'q'          => ['style', 'class', 'cite'],
+            'time'       => ['style', 'class', 'datetime'],
+            'h1'         => ['style', 'class', 'align', 'id'],
+            'h2'         => ['style', 'class', 'align', 'id'],
+            'h3'         => ['style', 'class', 'align', 'id'],
+            'h4'         => ['style', 'class', 'align', 'id'],
+            'h5'         => ['style', 'class', 'align', 'id'],
+            'h6'         => ['style', 'class', 'align', 'id'],
+            'ul'         => ['style', 'class'],
+            'ol'         => ['style', 'class', 'start', 'type', 'reversed'],
+            'li'         => ['style', 'class', 'value'],
+            'dl'         => ['style', 'class'],
+            'dt'         => ['style', 'class'],
+            'dd'         => ['style', 'class'],
+            'blockquote' => ['style', 'class', 'cite'],
+            'pre'        => ['style', 'class'],
+            'code'       => ['style', 'class'],
+            'kbd'        => ['style', 'class'],
+            'samp'       => ['style', 'class'],
+            'var'        => ['style', 'class'],
+            'a'          => ['href', 'title', 'target', 'rel', 'style', 'class', 'id'],
+            'img'        => ['src', 'alt', 'title', 'width', 'height', 'style', 'class', 'loading'],
+            'figure'     => ['style', 'class'],
+            'figcaption' => ['style', 'class'],
+            'table'      => ['style', 'class', 'border', 'cellpadding', 'cellspacing', 'width', 'align', 'summary'],
+            'caption'    => ['style', 'class', 'align'],
+            'colgroup'   => ['style', 'class', 'span'],
+            'col'        => ['style', 'class', 'span', 'width'],
+            'thead'      => ['style', 'class', 'align', 'valign'],
+            'tbody'      => ['style', 'class', 'align', 'valign'],
+            'tfoot'      => ['style', 'class', 'align', 'valign'],
+            'tr'         => ['style', 'class', 'align', 'valign'],
+            'td'         => ['style', 'class', 'align', 'valign', 'colspan', 'rowspan', 'width', 'height', 'headers'],
+            'th'         => ['style', 'class', 'align', 'valign', 'colspan', 'rowspan', 'width', 'height', 'scope', 'headers', 'abbr'],
+            'details'    => ['style', 'class', 'open'],
+            'summary'    => ['style', 'class'],
+            'iframe'     => ['src', 'title', 'width', 'height', 'style', 'class', 'allow', 'allowfullscreen', 'frameborder', 'loading'],
+            'video'      => ['src', 'poster', 'width', 'height', 'style', 'class', 'controls', 'preload', 'muted', 'loop', 'playsinline'],
+            'audio'      => ['src', 'style', 'class', 'controls', 'preload', 'muted', 'loop'],
+            'source'     => ['src', 'type', 'media'],
         ];
 
-        // 先显式移除 <script> 标签块
-        $html = preg_replace('/<script\b[^>]*>[\s\S]*?<\/script>/iu', '', $html);
+        // 连同内容一起删除的标签（其子节点一并移除）
+        $dropWithContent = [
+            'script', 'style', 'noscript', 'template', 'head', 'title',
+            'meta', 'link', 'base', 'object', 'embed', 'applet', 'param',
+            'form', 'input', 'button', 'textarea', 'select', 'option', 'optgroup',
+            'fieldset', 'legend', 'label', 'output', 'progress', 'meter',
+        ];
 
-        // 使用strip_tags进行基础过滤，只允许指定标签
-        $allowedTagsStr = '<' . implode('><', array_keys($allowedTags)) . '>';
-        $html = strip_tags($html, $allowedTagsStr);
+        // 回退：环境不支持 DOMDocument 时，退化到 strip_tags（会丢失属性，仅保底）
+        if (!class_exists('DOMDocument') || !function_exists('libxml_use_internal_errors')) {
+            $allowedTagsStr = '<' . implode('><', array_keys($allowed)) . '>';
+            $fallback = preg_replace('/<script\b[^>]*>[\s\S]*?<\/script>/iu', '', $html);
+            $fallback = strip_tags($fallback, $allowedTagsStr);
+            $fallback = preg_replace('/\s*on\w+\s*=\s*["\']?[^"\'>]*["\']?/iu', '', $fallback);
+            $fallback = preg_replace('/expression\s*\(/iu', '', $fallback);
+            return $fallback;
+        }
 
-        // 清理所有事件处理器属性（on*）
-        $html = preg_replace('/\s*on\w+\s*=\s*["\']?[^"\'>]*["\']?/iu', '', $html);
-
-        // 对 href/src 属性进行协议白名单校验
-        $html = preg_replace_callback(
-            '/(href|src)\s*=\s*(["\']?)([^"\'>\s]*)\2/iu',
-            function ($matches) {
-                $attr = strtolower($matches[1]);
-                $url = self::sanitizeUrl($matches[3]);
-                return $attr . '="' . $url . '"';
-            },
-            $html
+        $dom = new DOMDocument('1.0', 'UTF-8');
+        $prev = libxml_use_internal_errors(true);
+        // 包装根 div + xml 声明以确保 UTF-8 正确解析
+        $dom->loadHTML(
+            '<?xml encoding="UTF-8"?><div id="__lm_root__">' . $html . '</div>',
+            LIBXML_HTML_NODEFDTD | LIBXML_NOERROR | LIBXML_NOWARNING
         );
+        libxml_clear_errors();
+        libxml_use_internal_errors($prev);
 
-        // 清理 expression (IE)
-        $html = preg_replace('/expression\s*\(/iu', '', $html);
+        // 定位包装根（getElementById 在无 DTD 时不可靠，改用 XPath）
+        $xpath = new DOMXPath($dom);
+        $nodes = $xpath->query('//*[@id="__lm_root__"]');
+        $root = $nodes->length > 0 ? $nodes->item(0) : $dom->documentElement;
 
-        return $html;
+        if ($root === null) {
+            // 极端情况解析失败，回退到 strip_tags
+            $allowedTagsStr = '<' . implode('><', array_keys($allowed)) . '>';
+            $fallback = preg_replace('/<script\b[^>]*>[\s\S]*?<\/script>/iu', '', $html);
+            $fallback = strip_tags($fallback, $allowedTagsStr);
+            $fallback = preg_replace('/\s*on\w+\s*=\s*["\']?[^"\'>]*["\']?/iu', '', $fallback);
+            return $fallback;
+        }
+
+        self::cleanHtmlNode($root, $allowed, $dropWithContent);
+
+        // 输出根内的 HTML 片段（不包含包装 div）
+        $out = '';
+        foreach ($root->childNodes as $child) {
+            $out .= $dom->saveHTML($child);
+        }
+        return trim($out);
+    }
+
+    /**
+     * 递归清理 DOM 节点：
+     * - 移除黑名单标签（连同内容）
+     * - 非白名单标签用其子节点替换（保留文本内容，去掉标签）
+     * - 白名单标签清理属性后继续递归
+     */
+    private static function cleanHtmlNode($node, array $allowed, array $dropWithContent) {
+        if ($node === null) {
+            return;
+        }
+
+        // 1. 先删除"连同内容删除"的子节点
+        if ($node->hasChildNodes()) {
+            $toRemove = [];
+            foreach ($node->childNodes as $child) {
+                if ($child->nodeType === XML_ELEMENT_NODE) {
+                    $tag = strtolower($child->nodeName);
+                    if (in_array($tag, $dropWithContent, true)) {
+                        $toRemove[] = $child;
+                    }
+                }
+            }
+            foreach ($toRemove as $n) {
+                $n->parentNode->removeChild($n);
+            }
+        }
+
+        // 2. 收集剩余元素子节点（递归处理，避免在遍历中修改 live NodeList）
+        $children = [];
+        if ($node->hasChildNodes()) {
+            foreach ($node->childNodes as $child) {
+                if ($child->nodeType === XML_ELEMENT_NODE) {
+                    $children[] = $child;
+                }
+            }
+        }
+        foreach ($children as $child) {
+            $tag = strtolower($child->nodeName);
+            if (!isset($allowed[$tag])) {
+                // 非白名单：先递归清理其子节点，再用子节点替换它（保留文本内容）
+                self::cleanHtmlNode($child, $allowed, $dropWithContent);
+                $frag = $node->ownerDocument->createDocumentFragment();
+                while ($child->firstChild) {
+                    $frag->appendChild($child->firstChild);
+                }
+                if ($child->parentNode) {
+                    $child->parentNode->replaceChild($frag, $child);
+                }
+            } else {
+                // 白名单：清理属性后递归处理子节点
+                self::cleanHtmlAttributes($child, $allowed[$tag]);
+                self::cleanHtmlNode($child, $allowed, $dropWithContent);
+            }
+        }
+    }
+
+    /**
+     * 清理单个元素的属性：
+     * - 移除 on* 事件处理器
+     * - 移除 libxml 注入的命名空间属性
+     * - 净化 style 属性（剔除 CSS 中的 XSS 向量）
+     * - 校验 URL 类属性协议（仅允许 http/https/mailto/相对路径）
+     * - 移除不在白名单内的属性
+     */
+    private static function cleanHtmlAttributes($el, array $allowedAttrs) {
+        $toRemove = [];
+        foreach ($el->attributes as $attr) {
+            $name = strtolower($attr->nodeName);
+            $value = $attr->nodeValue;
+
+            // 移除所有 on* 事件处理器
+            if (strncmp($name, 'on', 2) === 0) {
+                $toRemove[] = $attr->nodeName;
+                continue;
+            }
+            // 移除 libxml 可能注入的命名空间属性
+            if ($name === 'xmlns' || $name === 'xml:lang' || strpos($name, 'xmlns:') === 0) {
+                $toRemove[] = $attr->nodeName;
+                continue;
+            }
+            // style 属性：净化危险 CSS
+            if ($name === 'style') {
+                $cleaned = self::sanitizeStyle($value);
+                if ($cleaned === '') {
+                    $toRemove[] = $attr->nodeName;
+                } else {
+                    $el->setAttribute('style', $cleaned);
+                }
+                continue;
+            }
+            // URL 类属性：协议白名单校验
+            if (in_array($name, ['href', 'src', 'cite', 'poster', 'action', 'formaction', 'data', 'background', 'longdesc', 'usemap'], true)) {
+                $safe = self::sanitizeUrl($value);
+                $el->setAttribute($name, $safe);
+                continue;
+            }
+            // 其他属性必须在白名单内
+            if (!in_array($name, $allowedAttrs, true)) {
+                $toRemove[] = $attr->nodeName;
+            }
+        }
+        foreach ($toRemove as $n) {
+            $el->removeAttribute($n);
+        }
+
+        // a 标签若有 target=_blank/_top，强制 rel=noopener noreferrer 防反向钓鱼
+        if (strtolower($el->nodeName) === 'a' && $el->hasAttribute('target')) {
+            $target = strtolower(trim($el->getAttribute('target')));
+            if ($target === '_blank' || $target === '_top') {
+                $existingRel = trim($el->getAttribute('rel'));
+                $el->setAttribute('rel', trim($existingRel . ' noopener noreferrer'));
+            }
+        }
+    }
+
+    /**
+     * 净化内联 style 属性，移除 CSS 中的 XSS 向量
+     */
+    private static function sanitizeStyle($style) {
+        if ($style === '' || $style === null) {
+            return '';
+        }
+        // 移除危险关键字（IE expression、伪协议行为绑定等）
+        $style = preg_replace('/expression\s*\(/iu', '', $style);
+        $style = preg_replace('/javascript\s*:/iu', '', $style);
+        $style = preg_replace('/vbscript\s*:/iu', '', $style);
+        $style = preg_replace('/-moz-binding\s*:/iu', '', $style);
+        $style = preg_replace('/behavior\s*:/iu', '', $style);
+        // 净化 url() 中的危险协议
+        $style = preg_replace_callback(
+            '/url\s*\(\s*(["\']?)([^)\'"]*)\1\s*\)/iu',
+            function ($m) {
+                $u = trim($m[2]);
+                $scheme = strtolower((string)(parse_url($u, PHP_URL_SCHEME) ?: ''));
+                if (in_array($scheme, ['javascript', 'vbscript', 'data', 'file'], true)) {
+                    return 'url()';
+                }
+                return $m[0];
+            },
+            $style
+        );
+        return trim($style);
     }
     
     /**
@@ -257,20 +476,59 @@ class Security {
      * 生成CSRF Token
      */
     public static function generateToken() {
-        if (empty($_SESSION[CSRF_TOKEN_NAME])) {
-            $_SESSION[CSRF_TOKEN_NAME] = bin2hex(random_bytes(32));
+        // 会话已开启（登录用户、表单提交等）：使用绑定会话的随机令牌
+        if (session_status() === PHP_SESSION_ACTIVE) {
+            if (empty($_SESSION[CSRF_TOKEN_NAME])) {
+                $_SESSION[CSRF_TOKEN_NAME] = bin2hex(random_bytes(32));
+            }
+            return $_SESSION[CSRF_TOKEN_NAME];
         }
-        return $_SESSION[CSRF_TOKEN_NAME];
+        // 无会话的匿名请求（可被 CDN 缓存的页面）：派生无状态令牌，
+        // 不依赖 $_SESSION，缓存页面上的令牌对所有匿名访客均可校验通过。
+        return self::anonymousToken();
+    }
+
+    /**
+     * 匿名无状态 CSRF 令牌：HMAC(密钥, 用途|日期|客户端IP)
+     * 跨站攻击者无法读取页面令牌（同源策略），也无法伪造 HMAC，防护等价于会话令牌；
+     * 按天轮换，校验时允许今天与昨天（兼容跨零点提交）。
+     */
+    private static function anonymousToken($day = null) {
+        $ip = self::getClientIp();
+        $day = $day ?? date('Ymd');
+        return hash_hmac('sha256', 'lm-anon-csrf|' . $day . '|' . $ip, SECRET_KEY);
     }
     
     /**
-     * 验证CSRF Token
+     * 验证CSRF Token（双模式）：
+     * 1) 会话令牌：登录用户与已开启会话的请求，行为与旧版一致；
+     * 2) 匿名无状态令牌：CDN 缓存页面上的表单/API 提交；
+     * 3) 惰性恢复会话：API 入口未提前 session_start 时，已登录用户仍可校验。
      */
     public static function validateToken($token) {
-        if (empty($_SESSION[CSRF_TOKEN_NAME]) || empty($token)) {
+        if (!is_string($token) || $token === '') {
             return false;
         }
-        return hash_equals($_SESSION[CSRF_TOKEN_NAME], $token);
+        // 1) 会话令牌
+        if (session_status() === PHP_SESSION_ACTIVE
+            && !empty($_SESSION[CSRF_TOKEN_NAME])
+            && hash_equals($_SESSION[CSRF_TOKEN_NAME], $token)) {
+            return true;
+        }
+        // 2) 匿名无状态令牌（今天 / 昨天）
+        if (hash_equals(self::anonymousToken(), $token)
+            || hash_equals(self::anonymousToken(date('Ymd', strtotime('-1 day'))), $token)) {
+            return true;
+        }
+        // 3) 惰性恢复会话再校验（携带会话 Cookie 的已登录用户）
+        if (session_status() === PHP_SESSION_NONE && isset($_COOKIE[session_name()])) {
+            session_start();
+            if (!empty($_SESSION[CSRF_TOKEN_NAME])
+                && hash_equals($_SESSION[CSRF_TOKEN_NAME], $token)) {
+                return true;
+            }
+        }
+        return false;
     }
     
     /**
@@ -357,10 +615,14 @@ class Security {
     /**
      * 安全的JSON输出
      */
-    public static function jsonResponse($data) {
+    public static function jsonResponse($data, $statusCode = 200) {
+        $statusCode = (int)$statusCode;
+        if ($statusCode >= 100 && $statusCode <= 599) {
+            http_response_code($statusCode);
+        }
         header('Content-Type: application/json; charset=utf-8');
         header('X-Content-Type-Options: nosniff');
-        echo json_encode($data, JSON_UNESCAPED_UNICODE);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_INVALID_UTF8_SUBSTITUTE);
         exit;
     }
     

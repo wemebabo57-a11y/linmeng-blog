@@ -36,6 +36,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'github_oauth_enabled',
             'github_client_id',
             'github_client_secret',
+            'gitcode_oauth_enabled',
+            'gitcode_client_id',
+            'gitcode_client_secret',
+            'gitcode_oauth_scope',
             'comment_need_approve',
             'site_start_date',
             'site_time_offset',
@@ -65,17 +69,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'ai_summary_enabled',
             'ai_default_provider_id',
             'ai_summary_prompt',
-            'music_enabled',
-            'music_api_url',
-            'music_api_server',
-            'music_api_type',
-            'music_api_id',
-            'music_api_key',
-            'music_list',
-            'tools_enabled',
-            'lanzou_parse_enabled',
-            'lanzou_parse_api_url',
-            'lanzou_parse_api_key',
         ];
 
         try {
@@ -123,8 +116,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                // 蓝奏云解析 API Key 留空时保留原值，不回显
-                if ($key === 'lanzou_parse_api_key') {
+                // GitHub OAuth Client Secret 留空时保留原值，不回显
+                if ($key === 'github_client_secret') {
                     $value = isset($_POST[$key]) ? trim($_POST[$key]) : '';
                     if ($value !== '') {
                         setSetting($key, $value);
@@ -132,8 +125,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     continue;
                 }
 
-                // GitHub OAuth Client Secret 留空时保留原值，不回显
-                if ($key === 'github_client_secret') {
+                // GitCode OAuth Client Secret 留空时保留原值，不回显
+                if ($key === 'gitcode_client_secret') {
                     $value = isset($_POST[$key]) ? trim($_POST[$key]) : '';
                     if ($value !== '') {
                         setSetting($key, $value);
@@ -520,6 +513,40 @@ require_once LM_ROOT . '/admin/template/header.php';
                 </div>
             </div>
 
+            <h3 style="margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">GitCode 登录设置</h3>
+
+            <div style="background: var(--bg-subtle); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
+                <p style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 12px;">
+                    启用后，前台登录/注册页面将显示「使用 GitCode 登录」按钮，用户授权后即可自动创建账号并登录。请在 GitCode 创建 OAuth 应用，<strong>回调地址</strong>填写 <code><?php echo e(rtrim(SITE_URL, '/') . '/gitcode-callback.php'); ?></code>。授权端点 <code>https://gitcode.com/oauth/authorize</code>，换 token <code>POST https://gitcode.com/oauth/token</code>，用户信息 <code>GET https://api.gitcode.com/api/v5/user</code>（Bearer 鉴权）。
+                </p>
+            </div>
+
+            <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
+                <input type="checkbox" name="gitcode_oauth_enabled" value="1" id="gitcode_oauth_enabled"
+                       <?php echo ($settings['gitcode_oauth_enabled'] ?? '0') === '1' ? 'checked' : ''; ?> style="width: auto;">
+                <label for="gitcode_oauth_enabled" style="margin-bottom: 0;">启用 GitCode 登录</label>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <div class="form-group">
+                    <label class="form-label">Client ID</label>
+                    <input type="text" name="gitcode_client_id" class="form-input" placeholder="应用 Client ID" value="<?php echo e($settings['gitcode_client_id'] ?? ''); ?>">
+                    <div class="form-hint">GitCode 应用的 Client ID，可公开</div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label">Client Secret</label>
+                    <input type="password" name="gitcode_client_secret" class="form-input" placeholder="<?php echo !empty($settings['gitcode_client_secret']) ? '已保存，留空不修改' : '应用 Client Secret'; ?>" value="">
+                    <div class="form-hint">GitCode 应用的 Client Secret，请勿泄露。留空将保留已保存的 Secret。</div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">权限范围 (scope)</label>
+                <input type="text" name="gitcode_oauth_scope" class="form-input" placeholder="all_user" value="<?php echo e($settings['gitcode_oauth_scope'] ?? ''); ?>">
+                <div class="form-hint">留空默认 <code>all_user</code>（读取用户基础资料，足够用于登录）。GitCode 文档列出的可用 scope：<code>all_user</code>、<code>all_key</code>、<code>all_groups</code>、<code>all_projects</code>、<code>all_pr</code>、<code>all_issue</code>、<code>all_note</code>、<code>all_hook</code>、<code>all_repository</code>，多个用空格分隔。</div>
+            </div>
+
             <h3 style="margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">注册极验人机验证</h3>
 
             <div style="background: var(--bg-subtle); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
@@ -635,98 +662,6 @@ require_once LM_ROOT . '/admin/template/header.php';
                 <label class="form-label">总结提示词</label>
                 <textarea name="ai_summary_prompt" class="form-textarea" style="min-height: 100px;"><?php echo e($settings['ai_summary_prompt'] ?? '请用中文对下面这篇文章生成一段精炼总结，保留核心观点。'); ?></textarea>
                 <div class="form-hint">发送给 AI 的系统提示词</div>
-            </div>
-
-            <h3 style="margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">音乐模块设置</h3>
-
-            <div style="background: var(--bg-subtle); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
-                <p style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 12px;">
-                    启用后，侧边栏将显示音乐播放器。支持通过 Meting API 接口（如 <code>https://api.zxki.cn/api/wyy</code>）动态获取歌单/歌曲，接口返回 JSON 格式。若接口调用失败，将自动回退到下方静态播放列表。
-                </p>
-            </div>
-
-            <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" name="music_enabled" value="1" id="music_enabled"
-                       <?php echo ($settings['music_enabled'] ?? '0') === '1' ? 'checked' : ''; ?> style="width: auto;">
-                <label for="music_enabled" style="margin-bottom: 0;">启用侧边栏音乐播放器</label>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">接口地址</label>
-                <input type="url" name="music_api_url" class="form-input" placeholder="https://api.zxki.cn/api/wyy"
-                       value="<?php echo e($settings['music_api_url'] ?? 'https://api.zxki.cn/api/wyy'); ?>">
-                <div class="form-hint">Meting 兼容接口，必须以 http:// 或 https:// 开头</div>
-            </div>
-
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <div class="form-group">
-                    <label class="form-label">数据源</label>
-                    <select name="music_api_server" class="form-select">
-                        <option value="netease" <?php echo ($settings['music_api_server'] ?? 'netease') === 'netease' ? 'selected' : ''; ?>>网易云音乐</option>
-                        <option value="tencent" <?php echo ($settings['music_api_server'] ?? 'netease') === 'tencent' ? 'selected' : ''; ?>>QQ 音乐</option>
-                    </select>
-                </div>
-
-                <div class="form-group">
-                    <label class="form-label">请求类型</label>
-                    <select name="music_api_type" class="form-select">
-                        <option value="playlist" <?php echo ($settings['music_api_type'] ?? 'playlist') === 'playlist' ? 'selected' : ''; ?>>歌单</option>
-                        <option value="song" <?php echo ($settings['music_api_type'] ?? 'playlist') === 'song' ? 'selected' : ''; ?>>单曲</option>
-                    </select>
-                </div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">歌单/歌曲 ID</label>
-                <input type="text" name="music_api_id" class="form-input" placeholder="如 2619366284"
-                       value="<?php echo e($settings['music_api_id'] ?? ''); ?>">
-                <div class="form-hint">填写后优先通过接口获取音乐；留空则使用下方静态列表</div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">接口 Key（选填）</label>
-                <input type="password" name="music_api_key" class="form-input" placeholder="如接口需要鉴权请填写"
-                       value="<?php echo e($settings['music_api_key'] ?? ''); ?>">
-                <div class="form-hint">部分私有 Meting 接口需要；公开接口可留空</div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">静态播放列表（备用）</label>
-                <textarea name="music_list" class="form-textarea" style="min-height: 120px; font-family: monospace;" placeholder='[{"title":"歌曲名","artist":"歌手","url":"音频链接","cover":"封面链接"}]'><?php echo e($settings['music_list'] ?? ''); ?></textarea>
-                <div class="form-hint">JSON 格式，接口不可用或 ID 为空时作为备用</div>
-            </div>
-
-            <h3 style="margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">工具页设置</h3>
-
-            <div style="background: var(--bg-subtle); padding: 16px; border-radius: var(--radius); margin-bottom: 16px;">
-                <p style="font-size: 0.85rem; color: var(--text-light); margin-bottom: 12px;">
-                    工具页（<a href="/tools.php" target="_blank" rel="noopener">/tools.php</a>）收录实用小工具。蓝奏云直链解析通过本站服务器代理请求第三方接口，接口地址与 Key 不会暴露到前端。默认接口：<code>https://api.zxki.cn/api/lzy</code>
-                </p>
-            </div>
-
-            <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" name="tools_enabled" value="1" id="tools_enabled"
-                       <?php echo ($settings['tools_enabled'] ?? '1') === '1' ? 'checked' : ''; ?> style="width: auto;">
-                <label for="tools_enabled" style="margin-bottom: 0;">启用工具页</label>
-            </div>
-
-            <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
-                <input type="checkbox" name="lanzou_parse_enabled" value="1" id="lanzou_parse_enabled"
-                       <?php echo ($settings['lanzou_parse_enabled'] ?? '1') === '1' ? 'checked' : ''; ?> style="width: auto;">
-                <label for="lanzou_parse_enabled" style="margin-bottom: 0;">启用蓝奏云直链解析工具</label>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">解析接口地址</label>
-                <input type="url" name="lanzou_parse_api_url" class="form-input" placeholder="https://api.zxki.cn/api/lzy"
-                       value="<?php echo e($settings['lanzou_parse_api_url'] ?? 'https://api.zxki.cn/api/lzy'); ?>">
-                <div class="form-hint">蓝奏云解析 API 地址，必须以 http:// 或 https:// 开头；查询参数由系统自动拼接</div>
-            </div>
-
-            <div class="form-group">
-                <label class="form-label">接口 Key（选填）</label>
-                <input type="password" name="lanzou_parse_api_key" class="form-input" placeholder="<?php echo !empty($settings['lanzou_parse_api_key']) ? '已保存，留空不修改' : '如接口需要鉴权请填写'; ?>" value="">
-                <div class="form-hint">部分私有接口需要 Key 鉴权；公开接口可留空。Key 仅在服务端使用，不会输出到前端。</div>
             </div>
 
             <h3 style="margin: 24px 0 16px; padding-bottom: 8px; border-bottom: 1px solid var(--border-color);">人机验证设置</h3>

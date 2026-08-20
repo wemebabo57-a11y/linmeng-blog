@@ -9,6 +9,7 @@ require_once LM_ROOT . '/includes/config.php';
 require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
+require_once LM_ROOT . '/includes/AiSummaryCache.php';
 
 session_start();
 requireAdmin();
@@ -46,31 +47,48 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $messageType = 'success';
                         break;
 
-                    case 'top':
+                    case 'pin':
                         db()->query("UPDATE lm_article SET is_top = 1 WHERE id IN ($idList)");
                         $message = '已置顶 ' . count($ids) . ' 篇文章';
                         $messageType = 'success';
                         break;
 
-                    case 'untop':
+                    case 'unpin':
                         db()->query("UPDATE lm_article SET is_top = 0 WHERE id IN ($idList)");
                         $message = '已取消置顶 ' . count($ids) . ' 篇文章';
                         $messageType = 'success';
                         break;
 
                     case 'delete':
-                        // 删除文章图片
+                        // 先记录正文引用，数据库删除全部成功后再清理 Markdown 文件。
+                        $articleBodies = db()->fetchAll("SELECT content FROM lm_article WHERE id IN ($idList)");
                         $images = db()->fetchAll("SELECT image_url FROM lm_article_image WHERE article_id IN ($idList)");
+                        db()->beginTransaction();
+                        try {
+                            db()->query("DELETE FROM lm_article_image WHERE article_id IN ($idList)");
+                            db()->query("DELETE FROM lm_comment WHERE article_id IN ($idList)");
+                            db()->query("DELETE FROM lm_article_like WHERE article_id IN ($idList)");
+                            db()->query("DELETE FROM lm_article WHERE id IN ($idList)");
+                            db()->commit();
+                        } catch (Exception $deleteError) {
+                            if (db()->getPdo()->inTransaction()) {
+                                db()->rollback();
+                            }
+                            throw $deleteError;
+                        }
+                        // 事务提交后再清理磁盘文件，数据库失败时不会丢失正文或图片。
                         foreach ($images as $img) {
                             $filePath = LM_ROOT . $img['image_url'];
                             if (file_exists($filePath) && strpos($filePath, LM_ROOT . '/assets/uploads/') === 0) {
                                 @unlink($filePath);
                             }
                         }
-                        db()->query("DELETE FROM lm_article_image WHERE article_id IN ($idList)");
-                        db()->query("DELETE FROM lm_comment WHERE article_id IN ($idList)");
-                        db()->query("DELETE FROM lm_article_like WHERE article_id IN ($idList)");
-                        db()->query("DELETE FROM lm_article WHERE id IN ($idList)");
+                        foreach ($articleBodies as $body) {
+                            ArticleContent::deleteForContent($body['content'] ?? '');
+                        }
+                        foreach ($ids as $deletedArticleId) {
+                            AiSummaryCache::deleteArticle($deletedArticleId);
+                        }
                         $message = '已删除 ' . count($ids) . ' 篇文章及其相关数据';
                         $messageType = 'success';
                         break;
@@ -194,8 +212,8 @@ require_once LM_ROOT . '/admin/template/header.php';
                 </label>
                 <button type="button" class="btn btn-sm btn-success" data-batch-action="publish">批量发布</button>
                 <button type="button" class="btn btn-sm btn-secondary" data-batch-action="draft">批量草稿</button>
-                <button type="button" class="btn btn-sm btn-primary" data-batch-action="top">批量置顶</button>
-                <button type="button" class="btn btn-sm btn-secondary" data-batch-action="untop">取消置顶</button>
+                <button type="button" class="btn btn-sm btn-primary" data-batch-action="pin">批量置顶</button>
+                <button type="button" class="btn btn-sm btn-secondary" data-batch-action="unpin">取消置顶</button>
                 <button type="button" class="btn btn-sm btn-danger" data-batch-action="delete">批量删除</button>
                 <span style="margin-left: auto; color: var(--text-light); font-size: 0.85rem;">
                     共 <?php echo $stats['total']; ?> 篇 | 已发布 <?php echo $stats['published']; ?> | 草稿 <?php echo $stats['draft']; ?>

@@ -1,12 +1,7 @@
 <?php
 /**
  * 林梦博客 - 配置文件
- *
- * 数据库凭据、密钥等敏感配置统一从 .env 文件读取。.env 由 setup.php 在安装时
- * 生成，且已在 .gitignore 中忽略，永远不会进入版本库。本文件本身不含任何敏感信息。
- *
- * 首次部署时若 .env 不存在或尚未配置数据库 / 密钥，会自动跳转到 /setup.php
- * 引导安装（setup.php 自身不引入本文件，不会产生循环跳转）。
+ * 由 setup.php 生成
  */
 
 // 防止直接访问
@@ -15,80 +10,65 @@ if (!defined('LM_ROOT')) {
 }
 
 // 程序版本号
-define('LM_VERSION', '2.2.2');
+define('LM_VERSION', '2.4.2');
 
-/**
- * 解析 .env 文件为键值数组（仅做 KEY=VALUE 解析，不写入超全局）
- */
-function lm_load_env($path) {
-    $env = [];
-    if (!is_file($path)) {
-        return $env;
-    }
-    $lines = @file($path, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
-    if (!is_array($lines)) {
-        return $env;
-    }
-    foreach ($lines as $line) {
+// 从项目根目录 .env 和服务器环境变量读取配置。敏感配置没有硬编码回退值。
+$env = [];
+$envFile = LM_ROOT . '/.env';
+if (is_readable($envFile)) {
+    foreach (file($envFile, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES) ?: [] as $line) {
         $line = trim($line);
-        if ($line === '' || $line[0] === '#') {
+        if ($line === '' || strpos($line, '#') === 0 || strpos($line, '=') === false) {
             continue;
         }
-        $eq = strpos($line, '=');
-        if ($eq === false) {
-            continue;
+        [$key, $value] = explode('=', $line, 2);
+        $value = trim($value);
+        if (strlen($value) >= 2 && (($value[0] === '"' && substr($value, -1) === '"') || ($value[0] === "'" && substr($value, -1) === "'"))) {
+            $value = substr($value, 1, -1);
         }
-        $key = trim(substr($line, 0, $eq));
-        $val = substr($line, $eq + 1);
-        $len = strlen($val);
-        // 去除两侧成对引号；双引号值需反转义 setup.php 写入的转义序列
-        if ($len >= 2) {
-            $first = $val[0];
-            $last  = $val[$len - 1];
-            if ($first === '"' && $last === '"') {
-                $val = substr($val, 1, -1);
-                // 反转义 \\ → \，\" → "（与 setup.php 的写入逻辑对应）
-                $val = preg_replace_callback('/\\\\(.)/', function ($m) {
-                    return $m[1];
-                }, $val);
-            } elseif ($first === "'" && $last === "'") {
-                $val = substr($val, 1, -1);
-            }
-        }
-        if ($key !== '') {
-            $env[$key] = $val;
-        }
+        $env[trim($key)] = $value;
     }
-    return $env;
 }
-
-$lmEnv = lm_load_env(LM_ROOT . '/.env');
+$envValue = static function ($key, $fallback = '') use ($env) {
+    if (array_key_exists($key, $env) && $env[$key] !== '') {
+        return $env[$key];
+    }
+    $serverValue = getenv($key);
+    return $serverValue !== false && $serverValue !== '' ? $serverValue : $fallback;
+};
+$requiredEnv = static function ($key) use ($envValue) {
+    $value = $envValue($key, '');
+    if ($value === '') {
+        error_log('Missing required configuration: ' . $key);
+        // 未配置时引导到安装向导（若存在），否则提示手动配置
+        if (is_readable(LM_ROOT . '/setup/index.php')) {
+            $path = rtrim($envValue('SITE_PATH', ''), '/') . '/setup/';
+            header('Location: ' . $path, true, 302);
+        } else {
+            echo '网站配置缺失：请访问 域名/setup 运行安装向导，或复制 .env.example 为 .env 并填写真实值。';
+        }
+        exit;
+    }
+    return $value;
+};
 
 // 数据库配置
-define('DB_HOST', isset($lmEnv['DB_HOST']) && $lmEnv['DB_HOST'] !== '' ? $lmEnv['DB_HOST'] : 'localhost');
-define('DB_NAME', $lmEnv['DB_NAME'] ?? '');
-define('DB_USER', $lmEnv['DB_USER'] ?? '');
-define('DB_PASS', $lmEnv['DB_PASS'] ?? '');
+define('DB_HOST', $envValue('DB_HOST', 'localhost'));
+define('DB_NAME', $requiredEnv('DB_NAME'));
+define('DB_USER', $requiredEnv('DB_USER'));
+define('DB_PASS', $requiredEnv('DB_PASS'));
 define('DB_CHARSET', 'utf8mb4');
 
 // 网站基础配置
-define('SITE_URL', $lmEnv['SITE_URL'] ?? '');
-define('SITE_PATH', $lmEnv['SITE_PATH'] ?? '');
+define('SITE_URL', $envValue('SITE_URL', 'https://example.com'));
+define('SITE_PATH', $envValue('SITE_PATH', ''));
 
-// 安全密钥（AES-256-CBC 加密用，一旦设定后不要变更，否则已加密数据无法解密）
-define('SECRET_KEY', $lmEnv['SECRET_KEY'] ?? '');
+// 安全密钥（AES-256-CBC 加密用，一旦设定后不要变更）
+define('SECRET_KEY', $requiredEnv('SECRET_KEY'));
 define('CSRF_TOKEN_NAME', 'lm_csrf_token');
 
-// 是否信任 X-Forwarded-For（仅当服务器明确位于反向代理后且代理已覆盖此头时设为 true）
-// Cloudflare 用户无需启用（自动走 HTTP_CF_CONNECTING_IP）
-define('LM_TRUST_PROXY', isset($lmEnv['LM_TRUST_PROXY']) ? (strtolower($lmEnv['LM_TRUST_PROXY']) === 'true' || $lmEnv['LM_TRUST_PROXY'] === '1') : false);
-
-// 登录防暴力破解参数（可选，Security 类内置默认值）
-define('LM_LOGIN_MAX_ATTEMPTS', 5);
-define('LM_LOGIN_LOCKOUT_TIME', 1800);
-
 // 会话配置
-$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+$isHttps = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off') 
         || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
 
 session_set_cookie_params([
@@ -102,12 +82,11 @@ session_set_cookie_params([
 
 ini_set('session.gc_maxlifetime', 7200);
 ini_set('session.use_strict_mode', 1);
-ini_set('session.use_only_cookies', 1);
 
 // 时区设置
 date_default_timezone_set('Asia/Shanghai');
 
-// 错误显示（生产环境关闭显示，仅记录日志）
+// 错误显示（生产环境建议关闭）
 error_reporting(E_ALL);
 ini_set('display_errors', '0');
 ini_set('log_errors', '1');
@@ -116,27 +95,3 @@ ini_set('log_errors', '1');
 define('UPLOAD_MAX_SIZE', 5 * 1024 * 1024);
 define('UPLOAD_ALLOWED_TYPES', ['image/jpeg', 'image/png', 'image/gif', 'image/webp']);
 define('UPLOAD_PATH', LM_ROOT . '/assets/uploads/');
-
-// 释放临时变量，避免污染包含方作用域
-unset($lmEnv);
-
-// ------------------------------------------------------------------
-// 安装引导：尚未配置数据库或密钥时，跳转到 setup.php
-// ------------------------------------------------------------------
-if (DB_NAME === '' || SECRET_KEY === '') {
-    if (basename($_SERVER['SCRIPT_NAME'] ?? '') !== 'setup.php') {
-        $docRoot  = isset($_SERVER['DOCUMENT_ROOT']) ? str_replace('\\', '/', rtrim($_SERVER['DOCUMENT_ROOT'], '/')) : '';
-        $appRoot  = str_replace('\\', '/', LM_ROOT);
-        $sitePath = ($docRoot !== '' && strpos($appRoot, $docRoot) === 0) ? substr($appRoot, strlen($docRoot)) : '';
-        $setupUrl = rtrim($sitePath, '/') . '/setup.php';
-
-        if (!headers_sent()) {
-            header('Location: ' . $setupUrl, true, 302);
-        }
-        echo '<!DOCTYPE html><html lang="zh-CN"><head><meta charset="utf-8"><title>安装引导</title></head><body>';
-        echo '<p style="font-family:sans-serif;text-align:center;margin-top:15vh">尚未安装，正在跳转到安装程序…';
-        echo '如未自动跳转，请访问 <a href="' . htmlspecialchars($setupUrl, ENT_QUOTES, 'UTF-8') . '">setup.php</a></p>';
-        echo '</body></html>';
-        exit;
-    }
-}

@@ -9,6 +9,7 @@ require_once LM_ROOT . '/includes/config.php';
 require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
+require_once LM_ROOT . '/includes/AiSummaryCache.php';
 
 session_start();
 requireAdmin();
@@ -20,15 +21,21 @@ $error = '';
 $success = '';
 
 // 处理删除
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_provider' && isset($_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         $error = 'CSRF 验证失败';
     } else {
-        $id = (int)$_GET['id'];
+        $id = (int)$_POST['id'];
         try {
             db()->delete('lm_ai_provider', 'id = ?', [$id]);
-            db()->delete('lm_ai_summary_cache', 'provider_id = ?', [$id]);
+            // 兼容清理旧数据库缓存，同时删除新的 Markdown 文件缓存。
+            try {
+                db()->delete('lm_ai_summary_cache', 'provider_id = ?', [$id]);
+            } catch (Exception $cacheError) {
+                error_log('Legacy AI cache cleanup failed: ' . $cacheError->getMessage());
+            }
+            AiSummaryCache::deleteProvider($id);
             $success = 'AI Provider 已删除，相关缓存已清空';
         } catch (Exception $e) {
             $error = '删除失败: ' . $e->getMessage();
@@ -270,9 +277,12 @@ require_once LM_ROOT . '/admin/template/header.php';
                     <td>
                         <div style="display: flex; gap: 4px;">
                             <a href="?edit=<?php echo (int)$p['id']; ?>" class="btn btn-sm btn-primary">编辑</a>
-                            <a href="?action=delete&id=<?php echo (int)$p['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                               class="btn btn-sm btn-danger"
-                               data-confirm="确定要删除该 Provider 吗？">删除</a>
+                            <form method="POST" action="" class="form-delete-provider" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="delete_provider">
+                            <input type="hidden" name="id" value="<?php echo (int)$p['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该 Provider 吗？">删除</button>
+                        </form>
                         </div>
                     </td>
                 </tr>

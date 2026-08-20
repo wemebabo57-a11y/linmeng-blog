@@ -133,6 +133,21 @@
     blobs = [];
   }
 
+  // 标签页隐藏时暂停 RAF，可见时恢复，避免后台耗电
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (animId) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
+    } else {
+      // 仅在已初始化（canvas 存在）且当前未运行时恢复
+      if (canvas && ctx && !animId) {
+        draw();
+      }
+    }
+  });
+
   window.addEventListener('resize', function () {
     if (!canvas) return;
     if (window.innerWidth < MOBILE_BREAKPOINT) {

@@ -21,14 +21,14 @@ $success = '';
 // 处理操作
 // 注：本页所有操作（含 POST 拒绝表单）统一通过 URL 中的 GET token 进行 CSRF 校验，
 // 拒绝表单内额外渲染的 Security::csrfField() 仅作冗余，不在此重复校验，保持与通过/删除流程一致。
-if (isset($_GET['action']) && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action'], $_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         die('CSRF验证失败');
     }
 
-    $id = (int)$_GET['id'];
-    $action = $_GET['action'];
+    $id = (int)$_POST['id'];
+    $action = $_POST['action'];
 
     try {
         $apply = db()->fetchOne("SELECT * FROM lm_link_apply WHERE id = ?", [$id]);
@@ -151,23 +151,31 @@ require_once LM_ROOT . '/admin/template/header.php';
                     <td><?php echo timeAgo($apply['created_at']); ?></td>
                     <td>
                         <?php if ($apply['status'] === 'pending'): ?>
-                        <a href="?action=approve&id=<?php echo $apply['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                           class="btn btn-sm btn-primary"
-                           data-confirm="确定要通过该申请吗？">通过</a>
+                        <form method="POST" action="" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="approve">
+                            <input type="hidden" name="id" value="<?php echo (int)$apply['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-primary" data-confirm="确定要通过该申请吗？">通过</button>
+                        </form>
                         <button type="button" class="btn btn-sm btn-secondary"
                                 data-toggle-target="reject-<?php echo $apply['id']; ?>"
                                 data-toggle-display="table-row">拒绝</button>
                         <?php endif; ?>
-                        <a href="?action=delete&id=<?php echo $apply['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                           class="btn btn-sm btn-danger"
-                           data-confirm="确定要删除该申请吗？">删除</a>
+                        <form method="POST" action="" class="form-delete-apply" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="delete">
+                            <input type="hidden" name="id" value="<?php echo (int)$apply['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该申请吗？">删除</button>
+                        </form>
                     </td>
                 </tr>
                 <?php if ($apply['status'] === 'pending'): ?>
                 <tr id="reject-<?php echo $apply['id']; ?>" style="display: none;">
                     <td colspan="8" style="background: var(--bg-color);">
-                        <form method="POST" action="?action=reject&id=<?php echo $apply['id']; ?>&token=<?php echo Security::generateToken(); ?>" style="display: flex; gap: 8px;">
+                        <form method="POST" action="" style="display: flex; gap: 8px;">
                             <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="reject">
+                            <input type="hidden" name="id" value="<?php echo (int)$apply['id']; ?>">
                             <input type="text" name="reply" class="form-input" placeholder="拒绝原因（可选）">
                             <button type="submit" class="btn btn-sm btn-danger">确认拒绝</button>
                             <button type="button" class="btn btn-sm btn-secondary"

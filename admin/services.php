@@ -20,13 +20,13 @@ $error = '';
 $success = '';
 
 // 处理删除
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_service' && isset($_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         die('CSRF验证失败');
     }
 
-    $id = (int)$_GET['id'];
+    $id = (int)$_POST['id'];
     try {
         db()->delete('lm_service_log', 'service_id = ?', [$id]);
         db()->delete('lm_service', 'id = ?', [$id]);
@@ -103,8 +103,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
 }
 
 // 处理手动立即探测
-if (isset($_GET['action']) && $_GET['action'] === 'probe_now') {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'probe_now') {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         die('CSRF验证失败');
     }
@@ -152,7 +152,11 @@ $siteRoot = rtrim(str_replace('\\', '/', LM_ROOT), '/');
 <div class="card" style="margin-bottom: 24px;">
     <div class="card-header">
         <div class="card-title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 6px;"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>探测设置</div>
-        <a href="?action=probe_now&token=<?php echo Security::generateToken(); ?>" class="btn btn-sm btn-primary">立即探测</a>
+        <form method="POST" action="" style="display: inline;">
+            <?php echo Security::csrfField(); ?>
+            <input type="hidden" name="action" value="probe_now">
+            <button type="submit" class="btn btn-sm btn-primary">立即探测</button>
+        </form>
     </div>
     <div class="card-body">
         <form method="POST" action="">
@@ -211,7 +215,7 @@ $siteRoot = rtrim(str_replace('\\', '/', LM_ROOT), '/');
                 <div class="form-group">
                     <label class="form-label">主机地址（IP/域名）*</label>
                     <input type="text" name="host" class="form-input" placeholder="example.com 或 1.2.3.4" required id="service_host">
-                    <div class="form-hint">不含协议和端口，如 kslinmeng.cn</div>
+                    <div class="form-hint">不含协议和端口，如 example.com</div>
                 </div>
             </div>
 
@@ -302,9 +306,12 @@ $siteRoot = rtrim(str_replace('\\', '/', LM_ROOT), '/');
                                 data-edit-path="<?php echo e($svc['path']); ?>"
                                 data-edit-sort="<?php echo (int)$svc['sort_order']; ?>"
                                 data-edit-enabled="<?php echo (int)$svc['enabled']; ?>">编辑</button>
-                        <a href="?action=delete&id=<?php echo (int)$svc['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                           class="btn btn-sm btn-danger"
-                           data-confirm="确定要删除该服务吗？相关探测记录也会一并删除。">删除</a>
+                        <form method="POST" action="" class="form-delete-service" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="delete_service">
+                            <input type="hidden" name="id" value="<?php echo (int)$svc['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该服务吗？相关探测记录也会一并删除。">删除</button>
+                        </form>
                     </td>
                 </tr>
                 <?php endforeach; ?>

@@ -11,6 +11,33 @@ $siteName = getSetting('site_name', '林梦的博客');
 $siteDesc = getSetting('site_description', '记录生活，分享技术');
 $siteKeywords = getSetting('site_keywords', '林梦,博客,技术,生活');
 $favicon = getSetting('site_favicon', '');
+
+// 全站背景图设置（在 body 上应用，所有页面生效）
+$siteBackground = getSetting('site_background', '');
+$siteBackgroundPosition = getSetting('site_background_position', 'center center');
+$siteBackgroundSize = getSetting('site_background_size', 'cover');
+$siteBackgroundOverlay = getSetting('site_background_overlay', '0.45');
+$siteBackgroundOverlay = max(0, min(0.85, (float)$siteBackgroundOverlay));
+if ($siteBackground !== '' && !isValidImageUrl($siteBackground)) {
+    $siteBackground = '';
+}
+if (!preg_match('/^(?:left|center|right|top|bottom|\d{1,3}(?:\.\d+)?%)(?:\s+(?:left|center|right|top|bottom|\d{1,3}(?:\.\d+)?%))?$/i', $siteBackgroundPosition)) {
+    $siteBackgroundPosition = 'center center';
+}
+if (!preg_match('/^(?:cover|contain|auto|\d{1,4}(?:\.\d+)?(?:px|%|vw|vh))(?:\s+(?:auto|\d{1,4}(?:\.\d+)?(?:px|%|vw|vh)))?$/i', $siteBackgroundSize)) {
+    $siteBackgroundSize = 'cover';
+}
+$bodyClasses = trim((string)($bodyClass ?? ''));
+if ($siteBackground !== '') {
+    $bodyClasses = trim($bodyClasses . ' has-site-background');
+}
+$bodyStyle = '';
+if ($siteBackground !== '') {
+    $bodyStyle = '--site-background-image:url(' . json_encode($siteBackground, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE) . ');'
+        . '--site-background-position:' . $siteBackgroundPosition . ';'
+        . '--site-background-size:' . $siteBackgroundSize . ';'
+        . '--site-background-overlay:' . $siteBackgroundOverlay . ';';
+}
 ?>
 <!DOCTYPE html>
 <html lang="zh-CN">
@@ -30,22 +57,29 @@ $favicon = getSetting('site_favicon', '');
     <link rel="icon" type="image/x-icon" href="<?php echo e($favicon); ?>">
     <?php endif; ?>
 
-    <!-- 主题初始化（外联，避免闪烁） -->
-    <script src="/assets/js/theme-init.js?v=<?php echo LM_VERSION; ?>"></script>
+    <!-- 主题初始化（内联，避免闪烁且省一次请求） -->
+    <script>
+    (function() {
+        var theme = 'auto';
+        try {
+            theme = localStorage.getItem('theme') || 'auto';
+        } catch (e) {
+            theme = 'auto';
+        }
+        if (theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else if (theme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    })();
+    </script>
 
     <link rel="stylesheet" href="/assets/css/style.css?v=<?php echo LM_VERSION; ?>">
     <link rel="stylesheet" href="/assets/css/design-system.css?v=<?php echo LM_VERSION; ?>">
+    <link rel="stylesheet" href="/assets/css/theme-refresh.css?v=<?php echo LM_VERSION; ?>">
+    <link rel="alternate" type="application/rss+xml" title="<?php echo e($siteName); ?> RSS" href="/rss.php">
 
-    <!-- Google Fonts Playfair Display -->
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet">
-
-    <!-- LXGW WenKai (霞鹜文楷) -->
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/lxgw-wenkai-webfont@1.7.0/style.css" />
-
-    <!-- Lucide Icons (defer: 不阻塞首屏，main.js 中 lucide.createIcons() 兜底) -->
-    <script defer src="https://cdn.jsdelivr.net/npm/lucide@latest/dist/umd/lucide.min.js"></script>
+    <!-- 正文优先使用系统中文字体，避免远程字体阻塞首屏。 -->
 
     <?php if (!empty($extraCss)): ?>
         <?php foreach ($extraCss as $css): ?>
@@ -53,22 +87,31 @@ $favicon = getSetting('site_favicon', '');
         <?php endforeach; ?>
     <?php endif; ?>
 </head>
-<body class="<?php echo !empty($bodyClass) ? e($bodyClass) : ''; ?>">
+<body class="<?php echo e($bodyClasses); ?>"<?php echo $bodyStyle !== '' ? ' style="' . e($bodyStyle) . '"' : ''; ?><?php echo !empty($articleViewId) ? ' data-article-id="' . (int)$articleViewId . '"' : ''; ?>>
+    <?php if ($currentPage === 'home'): ?>
+    <!-- 首页保留少量装饰，详情和工具页不再承担持续动画开销。 -->
+    <div class="sakura-container" aria-hidden="true">
+        <?php for ($i = 0; $i < 6; $i++): ?>
+        <span class="sakura" style="left:<?php echo 8 + ($i * 17); ?>%; animation-duration:<?php echo 11 + ($i % 3) * 2; ?>s; animation-delay:<?php echo $i * 2; ?>s;"></span>
+        <?php endfor; ?>
+    </div>
+    <?php endif; ?>
     <a href="#main-content" class="skip-link">跳至主要内容</a>
     <!-- 图片灯箱 -->
-    <div class="lightbox" role="dialog" aria-modal="true" aria-label="图片预览">
-        <button class="lightbox-close">&times;</button>
+    <div class="lightbox" role="dialog" aria-modal="true" aria-label="图片预览" aria-hidden="true">
+        <button type="button" class="lightbox-close" aria-label="关闭图片预览">&times;</button>
         <img src="" alt="预览图片">
     </div>
 
     <!-- 全局搜索浮层 -->
-    <div class="search-overlay" id="search-overlay" aria-hidden="true">
+    <div class="search-overlay" id="search-overlay" role="dialog" aria-modal="true" aria-labelledby="global-search-title" aria-hidden="true">
         <div class="search-overlay-backdrop"></div>
         <div class="search-overlay-panel">
             <div class="search-overlay-header">
+                <span id="global-search-title" class="visually-hidden">全局搜索</span>
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
                 <input type="text" id="global-search-input" placeholder="搜索文章标题、标签或内容..." autocomplete="off" aria-label="搜索">
-                <button class="search-overlay-close" id="search-overlay-close" aria-label="关闭搜索">
+                <button type="button" class="search-overlay-close" id="search-overlay-close" aria-label="关闭搜索">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
                 </button>
             </div>
@@ -96,22 +139,42 @@ $favicon = getSetting('site_favicon', '');
                 $avatar = getSetting('site_logo', '');
                 if ($avatar): 
                 ?>
-                <img src="<?php echo e($avatar); ?>" alt="头像">
+                <img src="<?php echo e($avatar); ?>" alt="头像" width="40" height="40">
                 <?php endif; ?>
                 <?php echo e($siteName); ?>
             </a>
             
-            <nav class="nav" id="main-nav">
-                <a href="/" class="<?php echo $currentPage === 'home' ? 'active' : ''; ?>">首页</a>
-                <a href="/archive.php" class="<?php echo $currentPage === 'archive' ? 'active' : ''; ?>">归档</a>
-                <a href="/tags.php" class="<?php echo $currentPage === 'tags' ? 'active' : ''; ?>">标签</a>
-                <a href="/guestbook.php" class="<?php echo $currentPage === 'guestbook' ? 'active' : ''; ?>">留言板</a>
-                <a href="/donate.php" class="<?php echo $currentPage === 'donate' ? 'active' : ''; ?>">捐赠页</a>
-                <a href="/links.php" class="<?php echo $currentPage === 'links' ? 'active' : ''; ?>">友链</a>
-                <a href="/gallery.php" class="<?php echo $currentPage === 'gallery' ? 'active' : ''; ?>">免费图床</a>
-                <a href="/tools.php" class="<?php echo $currentPage === 'tools' ? 'active' : ''; ?>">工具</a>
-                <a href="/status.php" class="<?php echo $currentPage === 'status' ? 'active' : ''; ?>">服务状态</a>
-                <a href="/about.php" class="<?php echo $currentPage === 'about' ? 'active' : ''; ?>">关于</a>
+            <?php
+            $primaryNavItems = [
+                ['href' => '/', 'page' => 'home', 'label' => '首页'],
+                ['href' => '/archive.php', 'page' => 'archive', 'label' => '归档'],
+                ['href' => '/tags.php', 'page' => 'tags', 'label' => '标签'],
+                ['href' => '/about.php', 'page' => 'about', 'label' => '关于']
+            ];
+            $secondaryNavItems = [
+                ['href' => '/guestbook.php', 'page' => 'guestbook', 'label' => '留言板'],
+                ['href' => '/donate.php', 'page' => 'donate', 'label' => '捐赠页'],
+                ['href' => '/links.php', 'page' => 'links', 'label' => '友链'],
+                ['href' => '/gallery.php', 'page' => 'gallery', 'label' => '免费图床'],
+                ['href' => '/status.php', 'page' => 'status', 'label' => '服务状态']
+            ];
+            $moreNavActive = in_array($currentPage, array_column($secondaryNavItems, 'page'), true);
+            ?>
+            <nav class="nav" id="main-nav" aria-label="主导航">
+                <?php foreach ($primaryNavItems as $item): ?>
+                <a href="<?php echo e($item['href']); ?>" class="<?php echo $currentPage === $item['page'] ? 'active' : ''; ?>"<?php echo $currentPage === $item['page'] ? ' aria-current="page"' : ''; ?>><?php echo e($item['label']); ?></a>
+                <?php endforeach; ?>
+                <div class="nav-more" data-nav-more>
+                    <button type="button" class="nav-more-trigger<?php echo $moreNavActive ? ' active' : ''; ?>" aria-haspopup="true" aria-expanded="false" aria-controls="nav-more-menu">
+                        更多
+                        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+                    </button>
+                    <div class="nav-more-menu" id="nav-more-menu" role="menu" aria-hidden="true">
+                        <?php foreach ($secondaryNavItems as $item): ?>
+                        <a href="<?php echo e($item['href']); ?>" role="menuitem" class="<?php echo $currentPage === $item['page'] ? 'active' : ''; ?>"<?php echo $currentPage === $item['page'] ? ' aria-current="page"' : ''; ?>><?php echo e($item['label']); ?></a>
+                        <?php endforeach; ?>
+                    </div>
+                </div>
             </nav>
             
             <div class="header-actions">
@@ -133,7 +196,7 @@ $favicon = getSetting('site_favicon', '');
                 <?php endif; ?>
 
                 <!-- 主题切换按钮 -->
-                <button class="theme-toggle" title="切换主题" aria-label="切换主题" aria-pressed="false">
+                <button class="theme-toggle" type="button" title="切换主题" aria-label="切换主题" aria-pressed="false">
                     <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
                 </button>
 
@@ -163,39 +226,32 @@ $favicon = getSetting('site_favicon', '');
         <div class="mobile-drawer-header">
             <a href="/" class="logo">
                 <?php if ($avatar): ?>
-                <img src="<?php echo e($avatar); ?>" alt="头像">
+                <img src="<?php echo e($avatar); ?>" alt="头像" width="40" height="40">
                 <?php endif; ?>
                 <?php echo e($siteName); ?>
             </a>
-            <button class="mobile-drawer-close" id="mobile-drawer-close" aria-label="关闭菜单">
+            <button type="button" class="mobile-drawer-close" id="mobile-drawer-close" aria-label="关闭菜单">
                 <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
         </div>
-        <nav class="mobile-drawer-nav">
-            <a href="/" class="<?php echo $currentPage === 'home' ? 'active' : ''; ?>"><span>首页</span></a>
-            <a href="/archive.php" class="<?php echo $currentPage === 'archive' ? 'active' : ''; ?>"><span>归档</span></a>
-            <a href="/tags.php" class="<?php echo $currentPage === 'tags' ? 'active' : ''; ?>"><span>标签</span></a>
-            <a href="/guestbook.php" class="<?php echo $currentPage === 'guestbook' ? 'active' : ''; ?>"><span>留言板</span></a>
-            <a href="/donate.php" class="<?php echo $currentPage === 'donate' ? 'active' : ''; ?>"><span>捐赠页</span></a>
-            <a href="/links.php" class="<?php echo $currentPage === 'links' ? 'active' : ''; ?>"><span>友链</span></a>
-            <a href="/gallery.php" class="<?php echo $currentPage === 'gallery' ? 'active' : ''; ?>"><span>免费图床</span></a>
-            <a href="/tools.php" class="<?php echo $currentPage === 'tools' ? 'active' : ''; ?>"><span>工具</span></a>
-            <a href="/status.php" class="<?php echo $currentPage === 'status' ? 'active' : ''; ?>"><span>服务状态</span></a>
-            <a href="/about.php" class="<?php echo $currentPage === 'about' ? 'active' : ''; ?>"><span>关于</span></a>
+        <nav class="mobile-drawer-nav" aria-label="移动端主导航">
+            <?php foreach (array_merge($primaryNavItems, $secondaryNavItems) as $item): ?>
+            <a href="<?php echo e($item['href']); ?>" class="<?php echo $currentPage === $item['page'] ? 'active' : ''; ?>"<?php echo $currentPage === $item['page'] ? ' aria-current="page"' : ''; ?>><span><?php echo e($item['label']); ?></span></a>
+            <?php endforeach; ?>
         </nav>
         <div class="mobile-drawer-footer">
             <?php if (isLoggedIn()): ?>
                 <?php $drawerUser = currentUser(); ?>
                 <?php if ($drawerUser): ?>
-                <a href="/user.php?id=<?php echo (int)$drawerUser['id']; ?>" class="btn btn-secondary" style="flex:1;">个人主页</a>
+                <a href="/user.php?id=<?php echo (int)$drawerUser['id']; ?>" class="btn btn-secondary">个人主页</a>
                 <?php endif; ?>
                 <?php if (isAdmin()): ?>
-                <a href="/admin/" class="btn btn-primary" style="flex:1;">后台管理</a>
+                <a href="/admin/" class="btn btn-primary">后台管理</a>
                 <?php endif; ?>
-                <a href="/logout.php" class="btn btn-secondary" style="flex:1;">退出</a>
+                <a href="/logout.php" class="btn btn-secondary">退出</a>
             <?php else: ?>
-                <a href="/login.php" class="btn btn-primary" style="flex:1;">登录</a>
-                <a href="/register.php" class="btn btn-secondary" style="flex:1;">注册</a>
+                <a href="/login.php" class="btn btn-primary">登录</a>
+                <a href="/register.php" class="btn btn-secondary">注册</a>
             <?php endif; ?>
         </div>
     </aside>

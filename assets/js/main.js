@@ -6,6 +6,39 @@
 
 'use strict';
 
+// 全局降低动效偏好：CSS 只能压缩动画时长，JS 侧的定时器/滚动动画需据此跳过。
+var prefersReducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+if (window.matchMedia) {
+    var motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    var onMotionChange = function (e) { prefersReducedMotion = e.matches; };
+    if (motionQuery.addEventListener) motionQuery.addEventListener('change', onMotionChange);
+    else if (motionQuery.addListener) motionQuery.addListener(onMotionChange);
+}
+
+// 平滑滚动行为：降低动效偏好下退化为瞬时跳转。
+function lmScrollBehavior() {
+    return prefersReducedMotion ? 'auto' : 'smooth';
+}
+
+// 弹层共用滚动锁：多个弹层同时存在时，只有最后一个关闭才恢复页面滚动。
+(function () {
+    let lockCount = 0;
+    let previousOverflow = '';
+
+    window.lmLockScroll = function () {
+        if (!document.body) return;
+        if (lockCount === 0) previousOverflow = document.body.style.overflow;
+        lockCount += 1;
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.lmUnlockScroll = function () {
+        if (!document.body || lockCount === 0) return;
+        lockCount -= 1;
+        if (lockCount === 0) document.body.style.overflow = previousOverflow;
+    };
+})();
+
 // 全局错误处理
 window.addEventListener('error', function(e) {
     console.warn('[全局] 未捕获的错误:', e.error);
@@ -113,45 +146,38 @@ document.addEventListener('DOMContentLoaded', function() {
     const wechatModal = document.querySelector('.wechat-modal');
 
     if (wechatBtn && wechatModal) {
-        wechatBtn.addEventListener('click', function(e) {
-            e.preventDefault();
+        let wechatTrigger = null;
+
+        function openWechat() {
+            wechatTrigger = document.activeElement;
             wechatModal.classList.add('active');
-        });
-
-        // 点击背景关闭
-        wechatModal.addEventListener('click', function(e) {
-            if (e.target === wechatModal) {
-                wechatModal.classList.remove('active');
-            }
-        });
-
-        // 关闭按钮（由 sidebar.php 提供 .modal-close，缺失时容错跳过）
-        const wechatCloseBtn = wechatModal.querySelector('.modal-close, .wechat-close');
-        if (wechatCloseBtn) {
-            wechatCloseBtn.addEventListener('click', function(e) {
-                e.preventDefault();
-                wechatModal.classList.remove('active');
-            });
+            wechatModal.setAttribute('aria-hidden', 'false');
+            window.lmLockScroll();
+            const closeBtn = wechatModal.querySelector('.modal-close, .wechat-close');
+            if (closeBtn) closeBtn.focus();
         }
 
-        // Esc 关闭任意已开启的弹窗（wechat-modal / lightbox / share-modal）
-        document.addEventListener('keydown', function(e) {
-            if (e.key !== 'Escape') return;
-            if (wechatModal.classList.contains('active')) {
-                wechatModal.classList.remove('active');
-                return;
-            }
-            const lightbox = document.querySelector('.lightbox.active');
-            if (lightbox) {
-                lightbox.classList.remove('active');
-                document.body.style.overflow = '';
-                return;
-            }
-            const shareModal = document.getElementById('share-modal');
-            if (shareModal && shareModal.classList.contains('active')) {
-                shareModal.classList.remove('active');
-            }
+        function closeWechat() {
+            if (!wechatModal.classList.contains('active')) return;
+            wechatModal.classList.remove('active');
+            wechatModal.setAttribute('aria-hidden', 'true');
+            window.lmUnlockScroll();
+            if (wechatTrigger && typeof wechatTrigger.focus === 'function') wechatTrigger.focus();
+            wechatTrigger = null;
+        }
+
+        wechatBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            openWechat();
         });
+
+        wechatModal.addEventListener('click', function(e) {
+            if (e.target === wechatModal) closeWechat();
+        });
+
+        const wechatCloseBtn = wechatModal.querySelector('.modal-close, .wechat-close');
+        if (wechatCloseBtn) wechatCloseBtn.addEventListener('click', closeWechat);
+        wechatModal.addEventListener('lm-close', closeWechat);
     }
     
     // ==================== 评论回复 ====================
@@ -242,51 +268,17 @@ document.addEventListener('DOMContentLoaded', function() {
     initLightbox();
     
     // ==================== 自动生成文章目录 ====================
-    (function() {
-        const articleContent = document.querySelector('.article-content');
-        const tocContainer = document.querySelector('.toc-container');
-        
-        if (articleContent && tocContainer) {
-            const headings = articleContent.querySelectorAll('h2, h3');
-            if (headings.length > 0) {
-                const tocList = tocContainer.querySelector('.toc-list, #toc-list');
-                if (tocList) {
-                    tocContainer.style.display = 'block';
-                    tocList.innerHTML = '';
-                    headings.forEach((heading, index) => {
-                        const id = 'heading-' + index;
-                        heading.id = id;
-                        
-                        const li = document.createElement('li');
-                        const a = document.createElement('a');
-                        a.href = '#' + id;
-                        a.textContent = heading.textContent;
-                        if (heading.tagName === 'H3') {
-                            a.classList.add('toc-h3');
-                        }
-                        a.addEventListener('click', function(e) {
-                            e.preventDefault();
-                            heading.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                        });
-                        li.appendChild(a);
-                        tocList.appendChild(li);
-                    });
-                }
-            } else {
-                tocContainer.style.display = 'none';
-            }
-        }
-    })();
-    
+    // 目录生成与高亮统一由 ui-enhancements.js 处理；这里只负责生成目录。
+
     // ==================== 平滑滚动 ====================
     document.querySelectorAll('a[href^="#"]').forEach(anchor => {
         anchor.addEventListener('click', function(e) {
             const href = this.getAttribute('href');
-            if (!href || href === '#') return;
+            if (!href || href === '#' || this.closest('.toc-list')) return;
             const target = document.querySelector(href);
             if (target) {
                 e.preventDefault();
-                target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                target.scrollIntoView({ behavior: lmScrollBehavior(), block: 'start' });
             }
         });
     });
@@ -345,7 +337,8 @@ document.addEventListener('DOMContentLoaded', function() {
     likeBtns.forEach(btn => {
         btn.addEventListener('click', function() {
             const articleId = this.dataset.articleId;
-            if (!articleId) return;
+            if (!articleId || this.disabled) return;
+            this.disabled = true;
 
             const csrfInput = document.querySelector('meta[name="csrf-token"]');
             const csrfToken = csrfInput ? csrfInput.getAttribute('content') : '';
@@ -363,7 +356,8 @@ document.addEventListener('DOMContentLoaded', function() {
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
-                    this.classList.toggle('active');
+                    this.classList.toggle('active', data.liked === true);
+                    this.setAttribute('aria-pressed', data.liked === true ? 'true' : 'false');
                     const countEl = this.querySelector('.like-count');
                     if (countEl) countEl.textContent = data.count;
                     showMessage(data.message, 'success');
@@ -371,13 +365,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     showMessage(data.message, 'error');
                 }
             })
-            .catch(() => showMessage('操作失败', 'error'));
+            .catch(() => showMessage('操作失败', 'error'))
+            .finally(() => {
+                this.disabled = false;
+            });
         });
     });
 
     // ==================== 滚动视差 ====================
     function initParallax() {
-        if (window.innerWidth < 768) return;
+        if (prefersReducedMotion || window.innerWidth < 768) return;
         var parallaxEls = document.querySelectorAll('[data-parallax]');
         if (!parallaxEls.length) return;
         window.addEventListener('scroll', function() {
@@ -399,7 +396,12 @@ document.addEventListener('DOMContentLoaded', function() {
         var observer = new IntersectionObserver(function(entries) {
             entries.forEach(function(entry) {
                 if (entry.isIntersecting) {
-                    var target = parseInt(entry.target.dataset.count);
+                    var target = parseInt(entry.target.dataset.count, 10) || 0;
+                    if (prefersReducedMotion) {
+                        entry.target.textContent = target;
+                        observer.unobserve(entry.target);
+                        return;
+                    }
                     var startTime = performance.now();
                     var duration = 1200;
                     function update(currentTime) {
@@ -428,7 +430,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
     // ==================== 鼠标跟随光效 ====================
     function initCardGlow() {
-        if (window.innerWidth < 768 || !('ontouchstart' in window === false)) return;
+        // 触摸设备没有真实 hover，光效只会造成无谓重绘
+        if (prefersReducedMotion || window.innerWidth < 768 || 'ontouchstart' in window) return;
         document.querySelectorAll('.card, .widget').forEach(function(card) {
             var glow = document.createElement('div');
             glow.className = 'card-glow';
@@ -456,6 +459,11 @@ document.addEventListener('DOMContentLoaded', function() {
         var elements = document.querySelectorAll('[data-typewriter]');
         elements.forEach(function(el) {
             var text = el.dataset.typewriter || el.textContent;
+            if (prefersReducedMotion) {
+                el.textContent = text;
+                el.style.borderRight = 'none';
+                return;
+            }
             el.textContent = '';
             el.style.borderRight = '2px solid var(--primary-color)';
             var i = 0;
@@ -475,26 +483,7 @@ document.addEventListener('DOMContentLoaded', function() {
     initTypewriter();
 
     // ==================== TOC滚动高亮 ====================
-    function initTocHighlight() {
-        var headings = document.querySelectorAll('.article-content h2, .article-content h3, .article-content h4');
-        var tocLinks = document.querySelectorAll('.toc-list a');
-        if (!headings.length || !tocLinks.length) return;
-
-        var observer = new IntersectionObserver(function(entries) {
-            entries.forEach(function(entry) {
-                if (entry.isIntersecting) {
-                    tocLinks.forEach(function(link) { link.classList.remove('active'); });
-                    var activeLink = document.querySelector('.toc-list a[href="#' + entry.target.id + '"]');
-                    if (activeLink) activeLink.classList.add('active');
-                }
-            });
-        }, { rootMargin: '-80px 0px -70% 0px' });
-
-        headings.forEach(function(h) {
-            if (h.id) observer.observe(h);
-        });
-    }
-    initTocHighlight();
+    // 目录生成与高亮由 ui-enhancements.js 统一处理。
 
     // ==================== 复制文章链接按钮 ====================
     document.querySelectorAll('.copy-link-btn').forEach(function(btn) {
@@ -532,7 +521,13 @@ document.addEventListener('DOMContentLoaded', function() {
     (function initVisitorCounter() {
         var storageKey = 'lm_site_visitor_marked';
         var thirtyDays = 30 * 24 * 60 * 60 * 1000;
-        var markedAt = localStorage.getItem(storageKey);
+        // localStorage 在隐私模式/禁用存储时会抛错，读写都需要保护
+        var markedAt = null;
+        try {
+            markedAt = localStorage.getItem(storageKey);
+        } catch (e) {
+            markedAt = null;
+        }
 
         if (markedAt && (Date.now() - parseInt(markedAt, 10)) < thirtyDays) {
             return;
@@ -552,7 +547,11 @@ document.addEventListener('DOMContentLoaded', function() {
         .then(function(response) { return response.json(); })
         .then(function(data) {
             if (data.success) {
-                localStorage.setItem(storageKey, Date.now().toString());
+                try {
+                    localStorage.setItem(storageKey, Date.now().toString());
+                } catch (e) {
+                    // 存储不可用时仅跳过去重标记，不影响计数展示
+                }
                 document.querySelectorAll('.visitor-count').forEach(function(el) {
                     el.textContent = data.count.toLocaleString();
                     el.setAttribute('data-count', data.count);
@@ -560,6 +559,28 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         })
         .catch(function() {});
+    })();
+
+    // ==================== 文章浏览量异步上报 ====================
+    // 页面交给 CDN 缓存后，浏览量由前端上报（api/visit.php），
+    // 替代原先渲染时的同步 UPDATE，匿名缓存页同样计数。
+    (function initArticleViewReport() {
+        var articleId = document.body.getAttribute('data-article-id');
+        if (!articleId) {
+            return;
+        }
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        fetch('/api/visit.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                'X-CSRF-Token': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: 'article_id=' + encodeURIComponent(articleId),
+            credentials: 'same-origin'
+        }).catch(function() {});
     })();
 
     // ==================== 全局 data-toggle 切换显示 ====================
@@ -597,6 +618,8 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ==================== 增强主题切换动画 ====================
 function initThemeTransition() {
+    if (prefersReducedMotion) return;
+
     // 添加主题切换时的闪烁动画
     document.documentElement.style.transition = 'background-color 0.3s ease, color 0.3s ease';
     
@@ -612,8 +635,15 @@ function initTheme() {
     const themeToggle = document.querySelector('.theme-toggle');
     const html = document.documentElement;
     
-    // 读取保存的主题或默认跟随系统
-    const savedTheme = localStorage.getItem('theme') || 'auto';
+    const savedTheme = getStoredTheme();
+
+    function getStoredTheme() {
+        try {
+            return localStorage.getItem('theme') || 'auto';
+        } catch (e) {
+            return 'auto';
+        }
+    }
     
     function applyTheme(theme) {
         if (theme === 'dark') {
@@ -624,6 +654,9 @@ function initTheme() {
             html.removeAttribute('data-theme');
         }
         updateThemeIcon(theme);
+        if (themeToggle) {
+            themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+        }
     }
     
     function updateThemeIcon(theme) {
@@ -647,29 +680,37 @@ function initTheme() {
     
     if (themeToggle) {
         themeToggle.addEventListener('click', function() {
-            const current = localStorage.getItem('theme') || 'auto';
+            const current = getStoredTheme();
             let next;
             if (current === 'auto') next = 'light';
             else if (current === 'light') next = 'dark';
             else next = 'auto';
             
-            localStorage.setItem('theme', next);
+            try {
+                localStorage.setItem('theme', next);
+            } catch (e) {
+                // 存储不可用时仍保留当前页面主题
+            }
             applyTheme(next);
         });
     }
     
     // 监听系统主题变化
-    if (window.matchMedia) {
-        const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
-        mediaQuery.addEventListener('change', function(e) {
-            const saved = localStorage.getItem('theme') || 'auto';
-            if (saved === 'auto') {
-                applyTheme('auto');
+        if (window.matchMedia) {
+            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const handleThemeChange = function() {
+                if (getStoredTheme() === 'auto') applyTheme('auto');
+            };
+            if (mediaQuery.addEventListener) {
+                mediaQuery.addEventListener('change', handleThemeChange);
+            } else if (mediaQuery.addListener) {
+                mediaQuery.addListener(handleThemeChange);
             }
-        });
-    }
+        }
 
     // ==================== 标签 hover 增强 ====================
+    // 触摸端 hover 会粘滞，降低动效偏好下也不做位移
+    if (prefersReducedMotion || 'ontouchstart' in window) return;
     document.querySelectorAll('.tag').forEach(function(tag) {
         tag.addEventListener('mouseenter', function() {
             this.style.transform = 'translateY(-1px) scale(1.03)';
@@ -745,31 +786,54 @@ function initLightbox() {
     const lightboxImg = lightbox.querySelector('img');
     const lightboxClose = lightbox.querySelector('.lightbox-close');
     
-    // 文章画廊图片点击
-    document.querySelectorAll('.article-gallery-item img, .article-content img').forEach(img => {
-        img.style.cursor = 'zoom-in';
-        img.addEventListener('click', function() {
-            lightboxImg.src = this.src;
+    let lightboxTrigger = null;
+
+        window.lmOpenLightbox = openLightbox;
+        window.lmCloseLightbox = closeLightbox;
+
+        function openLightbox(src, alt, trigger) {
+            if (!src || !lightboxImg) return;
+            lightboxImg.src = src;
+            lightboxImg.alt = alt || '预览图片';
+            lightboxTrigger = trigger || null;
+            if (!lightbox.classList.contains('active')) window.lmLockScroll();
+            lightbox.setAttribute('aria-hidden', 'false');
             lightbox.classList.add('active');
-            document.body.style.overflow = 'hidden';
+            if (lightboxClose) lightboxClose.focus();
+        }
+
+        // 文章画廊图片点击
+        document.querySelectorAll('.article-gallery-item img, .article-content img').forEach(img => {
+            img.style.cursor = 'zoom-in';
+            img.addEventListener('click', function() {
+                openLightbox(this.src, this.alt, this);
+            });
         });
-    });
     
     // 关闭灯箱
-    if (lightboxClose) {
-        lightboxClose.addEventListener('click', closeLightbox);
-    }
+        if (lightboxClose) {
+            lightboxClose.addEventListener('click', closeLightbox);
+        }
+        lightbox.addEventListener('lm-open', function (e) {
+            const detail = e.detail || {};
+            openLightbox(detail.src, detail.alt, detail.trigger);
+        });
     lightbox.addEventListener('click', function(e) {
         if (e.target === lightbox) closeLightbox();
     });
-    
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') closeLightbox();
-    });
+
+    // Escape 关闭由 ui-enhancements.js 的统一调度按层级触发，此处不再单独监听，
+    // 避免多个监听器同时关闭不同弹层。
+    lightbox.addEventListener('lm-close', closeLightbox);
     
     function closeLightbox() {
+        if (!lightbox.classList.contains('active')) return;
         lightbox.classList.remove('active');
-        document.body.style.overflow = '';
+        lightbox.setAttribute('aria-hidden', 'true');
+        lightboxImg.removeAttribute('src');
+        window.lmUnlockScroll();
+        if (lightboxTrigger && typeof lightboxTrigger.focus === 'function') lightboxTrigger.focus();
+        lightboxTrigger = null;
     }
 }
 
@@ -818,7 +882,7 @@ function copyToClipboard(text) {
 // 注：返回顶部按钮与阅读进度条由 template/header.php 静态输出，
 // 滚动显隐与进度计算由 ui-enhancements.js 统一处理，此处不再重复创建。
 function scrollToTop() {
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    window.scrollTo({ top: 0, behavior: lmScrollBehavior() });
 }
 
 // ==================== 初始化 Lucide 图标 ====================

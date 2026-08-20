@@ -17,7 +17,9 @@ class Database {
                 PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
                 PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
                 PDO::ATTR_EMULATE_PREPARES => false, // 禁用模拟预处理，使用真实预处理语句
-                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET . " COLLATE utf8mb4_unicode_ci"
+                // 统一会话时区与字符集：避免 MySQL 按默认时区(常为 UTC)写入
+                // CURRENT_TIMESTAMP / NOW()，导致前台 timeAgo() 显示偏移(如“8 小时前”)。
+                PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES " . DB_CHARSET . " COLLATE utf8mb4_unicode_ci, time_zone = '+08:00'"
             ];
             
             $this->pdo = new PDO($dsn, DB_USER, DB_PASS, $options);
@@ -86,7 +88,11 @@ class Database {
      * 插入数据
      */
     public function insert($table, $data) {
+        $this->assertIdentifier($table);
         $columns = array_keys($data);
+        foreach ($columns as $column) {
+            $this->assertIdentifier($column);
+        }
         $values = array_values($data);
         $placeholders = array_fill(0, count($columns), '?');
         
@@ -100,10 +106,12 @@ class Database {
      * 更新数据
      */
     public function update($table, $data, $where, $whereParams = []) {
+        $this->assertIdentifier($table);
         $sets = [];
         $values = [];
         
         foreach ($data as $column => $value) {
+            $this->assertIdentifier($column);
             $sets[] = "`{$column}` = ?";
             $values[] = $value;
         }
@@ -119,6 +127,7 @@ class Database {
      * 删除数据
      */
     public function delete($table, $where, $params = []) {
+        $this->assertIdentifier($table);
         $sql = "DELETE FROM `{$table}` WHERE " . $where;
         $stmt = $this->query($sql, $params);
         return $stmt->rowCount();
@@ -169,7 +178,14 @@ class Database {
     /**
      * 检查表是否存在
      */
+    private function assertIdentifier($identifier) {
+        if (!is_string($identifier) || !preg_match('/^[A-Za-z_][A-Za-z0-9_]*$/', $identifier)) {
+            throw new InvalidArgumentException('非法数据库标识符');
+        }
+    }
+
     public function tableExists($table) {
+        $this->assertIdentifier($table);
         $sql = "SHOW TABLES LIKE ?";
         $result = $this->fetchColumn($sql, [$table]);
         return !empty($result);

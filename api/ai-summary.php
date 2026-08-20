@@ -22,8 +22,11 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 require_once LM_ROOT . '/includes/AiProvider.php';
+require_once LM_ROOT . '/includes/AiSummaryCache.php';
 
-session_start();
+// 注：不再 session_start()。CSRF 校验由 validateToken 双模式完成；
+// 已登录用户由 validateToken 惰性恢复会话，下方 isLoggedIn() 对应的
+// 用户级限流同样生效。匿名请求不再创建会话，避免多余的 Set-Cookie。
 
 // 关闭错误输出，避免污染 SSE 流；错误写入日志
 ini_set('display_errors', '0');
@@ -67,23 +70,6 @@ if ($articleId <= 0) {
     sendJsonError('参数错误');
 }
 
-/* ------------------------- 限流策略 ------------------------- */
-// IP 维度：每小时 10 次（含流式请求）
-if (!Security::checkRateLimit($clientIp, 'ai_summary', 10, 3600)) {
-    sendJsonError('请求过于频繁，请稍后再试');
-}
-// 文章维度：同 IP 同文章每小时 5 次，防止针对性消耗
-if (!Security::checkRateLimit($clientIp . '_art' . $articleId, 'ai_summary_article', 5, 3600)) {
-    sendJsonError('该文章请求过于频繁，请稍后再试');
-}
-// 登录用户额外限流：每用户每小时 20 次
-if (isLoggedIn()) {
-    $userId = (int)$_SESSION['user_id'];
-    if (!Security::checkRateLimit('u' . $userId, 'ai_summary_user', 20, 3600)) {
-        sendJsonError('请求过于频繁，请稍后再试');
-    }
-}
-
 try {
     // 读取已发布文章
     $article = db()->fetchOne(
@@ -94,8 +80,8 @@ try {
         sendJsonError('文章不存在');
     }
 
-    // 文章正文过短则不生成总结（防止无意义消耗）
-    $plainCheck = trim(strip_tags($article['content']));
+    // 文章正文过短则不生成总结（兼容数据库 HTML 与 Markdown 文件）
+    $plainCheck = getArticlePlainText($article);
     if (mb_strlen($plainCheck, 'UTF-8') < 50) {
         sendJsonError('文章内容过短，无需生成总结');
     }
@@ -113,46 +99,61 @@ try {
         sendJsonError('所选 AI 模型不可用');
     }
 
-    // 缓存命中检查（命中直接返回，不计入限流）
-    $contentHash = md5($article['title'] . $article['content']);
-    $cached = db()->fetchOne(
-        "SELECT summary FROM lm_ai_summary_cache WHERE article_id = ? AND provider_id = ? AND content_hash = ?",
-        [$articleId, $providerId, $contentHash]
-    );
-    if ($cached) {
+    // 正文、模型或提示词变化时使用新的缓存文件。
+    $systemPrompt = getSetting('ai_summary_prompt', '请用中文总结下面这篇文章。');
+    $contentHash = hash('sha256', implode("\n", [
+        $article['title'],
+        $plainCheck,
+        (string)($provider['model'] ?? ''),
+        (string)($provider['compatibility'] ?? ''),
+        $systemPrompt
+    ]));
+    $cachedSummary = AiSummaryCache::get($articleId, $providerId, $contentHash);
+    if ($cachedSummary !== null) {
         if ($isStream) {
-            // 流式模式：缓存一次性回放
             startSseStream();
-            sseEmit(['success' => true, 'streaming' => true]);
-            sseEmit(['delta' => $cached['summary']]);
+            sseEmit(['success' => true, 'streaming' => true, 'cached' => true]);
+            streamCachedSummary($cachedSummary);
             sseEmit(['done' => true, 'cached' => true]);
             exit;
         }
         echo json_encode([
             'success' => true,
-            'summary' => $cached['summary'],
+            'summary' => $cachedSummary,
             'cached' => true
         ]);
         exit;
     }
 
+    /* ------------------------- 缓存未命中后再计入限流 ------------------------- */
+    if (!Security::checkRateLimit($clientIp, 'ai_summary', 10, 3600)) {
+        sendJsonError('请求过于频繁，请稍后再试');
+    }
+    if (!Security::checkRateLimit($clientIp . '_art' . $articleId, 'ai_summary_article', 5, 3600)) {
+        sendJsonError('该文章请求过于频繁，请稍后再试');
+    }
+    if (isLoggedIn()) {
+        $userId = (int)$_SESSION['user_id'];
+        if (!Security::checkRateLimit('u' . $userId, 'ai_summary_user', 20, 3600)) {
+            sendJsonError('请求过于频繁，请稍后再试');
+        }
+    }
+
     // 内容清洗与截断
-    $plainContent = strip_tags($article['content']);
-    $plainContent = preg_replace('/\s+/', ' ', $plainContent);
+    $plainContent = $plainCheck;
     $maxChars = 8000;
     if (mb_strlen($plainContent, 'UTF-8') > $maxChars) {
         $plainContent = mb_substr($plainContent, 0, $maxChars, 'UTF-8') . '...';
     }
 
     $content = "标题：" . $article['title'] . "\n正文：\n" . $plainContent;
-    $systemPrompt = getSetting('ai_summary_prompt', '请用中文总结下面这篇文章。');
 
     $ai = new AiProvider($provider);
 
     if (!$isStream) {
         // 普通模式：阻塞请求，整体返回
         $summary = $ai->request($content, $systemPrompt);
-        saveCache($articleId, $providerId, $contentHash, $summary);
+        saveFileCache($articleId, $providerId, $contentHash, $summary);
         echo json_encode([
             'success' => true,
             'summary' => $summary,
@@ -189,7 +190,7 @@ try {
 
     // 完整保存缓存
     if (trim($fullSummary) !== '') {
-        saveCache($articleId, $providerId, $contentHash, $fullSummary);
+        saveFileCache($articleId, $providerId, $contentHash, $fullSummary);
     }
     sseEmit(['done' => true]);
 
@@ -271,21 +272,24 @@ function sseEmit(array $data) {
     flush();
 }
 
-/**
- * 保存缓存
- */
-function saveCache($articleId, $providerId, $contentHash, $summary) {
+/** Stream a cached summary in readable UTF-8 chunks. */
+function streamCachedSummary($summary) {
+    $length = mb_strlen($summary, 'UTF-8');
+    $chunkSize = 18;
+    for ($offset = 0; $offset < $length; $offset += $chunkSize) {
+        if (connection_aborted()) {
+            return;
+        }
+        sseEmit(['delta' => mb_substr($summary, $offset, $chunkSize, 'UTF-8'), 'cached' => true]);
+        usleep(18000);
+    }
+}
+
+/** Save the generated Markdown summary to the 30-day file cache. */
+function saveFileCache($articleId, $providerId, $contentHash, $summary) {
     try {
-        db()->query(
-            "INSERT INTO lm_ai_summary_cache (article_id, provider_id, content_hash, summary, created_at)
-             VALUES (?, ?, ?, ?, NOW())
-             ON DUPLICATE KEY UPDATE
-                content_hash = VALUES(content_hash),
-                summary = VALUES(summary),
-                created_at = VALUES(created_at)",
-            [$articleId, $providerId, $contentHash, $summary]
-        );
+        AiSummaryCache::put($articleId, $providerId, $contentHash, $summary);
     } catch (Exception $e) {
-        error_log('AI summary cache save failed: ' . $e->getMessage());
+        error_log('AI summary file cache save failed: ' . $e->getMessage());
     }
 }

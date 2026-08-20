@@ -11,6 +11,9 @@ require_once LM_ROOT . '/includes/functions.php';
 
 header('Content-Type: application/json');
 
+// 点赞后建立会话：让互动过的访客在文章页/首页等始终看到实时数据
+// （携带 PHPSESSID 的请求不会被 CDN 缓存，也不会命中公共缓存页）。
+// 缓存页上的匿名 CSRF 令牌由 validateToken 的无状态分支校验，不受影响。
 session_start();
 
 // 只允许POST请求

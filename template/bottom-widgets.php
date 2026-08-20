@@ -63,7 +63,7 @@ if (!isset($hotArticles)) {
         </div>
         <div class="widget-body">
             <div class="hitokoto-widget" id="hitokoto-widget">
-                <div class="hitokoto-text" id="hitokoto-text">加载中...</div>
+                <div class="hitokoto-text" id="hitokoto-text" aria-live="polite">加载中...</div>
                 <div class="hitokoto-from" id="hitokoto-from"></div>
             </div>
         </div>

@@ -17,8 +17,6 @@
       return;
     }
 
-    console.log('[音乐播放器] 初始化成功，共 ' + playlist.length + ' 首歌');
-
     var audio = new Audio();
     var currentIndex = 0;
     var isDragging = false;
@@ -27,6 +25,8 @@
     var isPlaying = false;
     var usingProxy = false;       // 当前是否走代理
     var proxyFailed = false;      // 当前歌曲代理是否已失败（用于回退直连）
+    var errorCount = 0;           // 连续错误计数，达到 3 次后停止自动跳转
+    var autoSkipTimer = null;     // 自动跳转下一首的延时句柄
 
     audio.preload = 'metadata';
     audio.volume = 0.7;
@@ -65,6 +65,7 @@
     var volIcon = container.querySelector('.mp-vol-icon');
     var listToggle = container.querySelector('.mp-list-toggle');
     var listWrap = container.querySelector('.mp-list');
+    var errorActions = null;       // 错误态操作按钮容器（重试/跳过）
 
     function buildUI() {
       container.innerHTML = '';
@@ -84,6 +85,11 @@
       infoWrap.appendChild(artistEl);
 
       var progressWrap = el('div', 'mp-progress-wrap');
+      progressWrap.setAttribute('role', 'slider');
+      progressWrap.setAttribute('aria-label', '播放进度');
+      progressWrap.setAttribute('aria-valuemin', '0');
+      progressWrap.setAttribute('aria-valuemax', '100');
+      progressWrap.setAttribute('aria-valuenow', '0');
       var progressBar = el('div', 'mp-progress-bar');
       var progressDot = el('span', 'mp-progress-dot');
       progressBar.appendChild(progressDot);
@@ -100,13 +106,37 @@
       var controls = el('div', 'mp-controls');
       var btnPrev = el('button', 'mp-btn mp-btn-prev');
       btnPrev.innerHTML = svgIcon('skip-back');
+      btnPrev.setAttribute('aria-label', '上一首');
       var btnPlay = el('button', 'mp-btn mp-btn-play');
       btnPlay.innerHTML = svgIcon('play');
+      btnPlay.setAttribute('aria-label', '播放');
+      btnPlay.setAttribute('aria-pressed', 'false');
       var btnNext = el('button', 'mp-btn mp-btn-next');
       btnNext.innerHTML = svgIcon('skip-forward');
+      btnNext.setAttribute('aria-label', '下一首');
       controls.appendChild(btnPrev);
       controls.appendChild(btnPlay);
       controls.appendChild(btnNext);
+
+      // 错误态操作按钮（默认隐藏，连续多次失败后展示）
+      errorActions = el('div', 'mp-error-actions');
+      errorActions.style.display = 'none';
+      var btnRetry = el('button', 'mp-btn mp-btn-retry');
+      btnRetry.innerHTML = svgIcon('play') + '<span>重试</span>';
+      btnRetry.setAttribute('aria-label', '重试当前歌曲');
+      var btnSkipErr = el('button', 'mp-btn mp-btn-skip');
+      btnSkipErr.innerHTML = svgIcon('skip-forward') + '<span>跳过</span>';
+      btnSkipErr.setAttribute('aria-label', '跳到下一首');
+      errorActions.appendChild(btnRetry);
+      errorActions.appendChild(btnSkipErr);
+      btnRetry.addEventListener('click', function () {
+        loadSong(currentIndex);
+        var p = audio.play();
+        if (p && p.catch) p.catch(function () {});
+      });
+      btnSkipErr.addEventListener('click', function () {
+        nextSong();
+      });
 
       var volumeWrap = el('div', 'mp-volume');
       var volIcon = el('span', 'mp-vol-icon');
@@ -117,12 +147,15 @@
       volSlider.max = '1';
       volSlider.step = '0.01';
       volSlider.value = audio.volume;
+      volSlider.setAttribute('aria-label', '音量');
       volumeWrap.appendChild(volIcon);
       volumeWrap.appendChild(volSlider);
 
       var listHeader = el('div', 'mp-list-header');
       var listToggle = el('button', 'mp-list-toggle');
       listToggle.innerHTML = '<span>播放列表</span><span class="mp-list-count">' + playlist.length + '</span>';
+      listToggle.setAttribute('aria-label', '展开/收起播放列表');
+      listToggle.setAttribute('aria-expanded', 'false');
       listHeader.appendChild(listToggle);
 
       var listWrap = el('div', 'mp-list');
@@ -151,6 +184,7 @@
       container.appendChild(progressWrap);
       container.appendChild(timeWrap);
       container.appendChild(controls);
+      container.appendChild(errorActions);
       container.appendChild(volumeWrap);
       container.appendChild(listHeader);
       container.appendChild(listWrap);
@@ -185,21 +219,35 @@
 
     // 判断 URL 是否需要通过后端代理获取
     // 仅在「需要 Referer / 会跨域拦截」的受限域名时才走代理
+    // 以下域名需要 Referer/CORS 绕过，统一通过 music-proxy.php 转发
     function needsProxy(url) {
       if (!url) return false;
       var lower = url.toLowerCase();
-      // music.163.com 的外链跳转（/song/media/outer/url）必须带 Referer 才能拿到真实音频
-      if (lower.indexOf('music.163.com') !== -1) return true;
-      // 126.net CDN 直链：浏览器直连通常可行，但部分资源缺 Referer 会 403，走代理更稳妥
-      if (lower.indexOf('.music.126.net') !== -1 || lower.indexOf('music.126.net') !== -1) return true;
+      // 这些域名在浏览器直连时会被 Referer/校验拦截或返回 403/404，必须走后端代理
+      var proxyDomains = [
+        'music.163.com',          // 网易云：外链跳转需 Referer
+        'music.126.net',          // 网易云 CDN：缺 Referer 易 403
+        'qqmusic.qq.com',         // QQ 音乐
+        'tc.qq.com',              // QQ 音乐 CDN
+        'y.qq.com',               // QQ 音乐门户
+        'kugou.com',              // 酷狗
+        'kuwo.cn',                // 酷我
+        'xiami.com'               // 虾米
+      ];
+      for (var i = 0; i < proxyDomains.length; i++) {
+        if (lower.indexOf(proxyDomains[i]) !== -1) return true;
+      }
       return false;
     }
 
     function loadSong(index) {
       var song = playlist[index];
+      // 清理上一次的自动跳转计时器，避免叠加
+      if (autoSkipTimer) { clearTimeout(autoSkipTimer); autoSkipTimer = null; }
       hasError = false;
       proxyFailed = false;
       usingProxy = false;
+      showErrorActions(false);
       titleEl.style.color = '';
       titleEl.textContent = song.title || '未知歌曲';
       artistEl.textContent = song.artist || '未知艺术家';
@@ -238,12 +286,12 @@
       if (needsProxy(song.url)) {
         audioSrc = '/music-proxy.php?url=' + encodeURIComponent(song.url);
         usingProxy = true;
-        console.log('[音乐播放器] 使用代理: ' + audioSrc);
       }
 
+      // 加载骨架：在音频开始加载前显示，元数据/错误时移除
+      container.classList.add('mp-loading');
       audio.src = audioSrc;
       audio.load();
-      console.log('[音乐播放器] 加载歌曲:', song.title, audioSrc);
 
       try { localStorage.setItem('mp_index', index); } catch (e) {}
     }
@@ -278,6 +326,8 @@
     function updatePlayBtn() {
       isPlaying = !audio.paused;
       btnPlay.innerHTML = isPlaying ? svgIcon('pause') : svgIcon('play');
+      btnPlay.setAttribute('aria-pressed', isPlaying ? 'true' : 'false');
+      btnPlay.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
       container.classList.toggle('mp-playing', isPlaying);
     }
 
@@ -303,6 +353,23 @@
       }
     }
 
+    // 轻提示 toast：自动 3s 后消失
+    function showToast(message) {
+      var existing = container.querySelector('.mp-toast');
+      if (existing) existing.remove();
+      var toast = el('div', 'mp-toast');
+      toast.setAttribute('role', 'status');
+      toast.setAttribute('aria-live', 'polite');
+      toast.textContent = message;
+      container.appendChild(toast);
+      setTimeout(function () { if (toast.parentNode) toast.remove(); }, 3000);
+    }
+
+    // 切换错误态操作按钮（重试 / 跳过）的显隐
+    function showErrorActions(show) {
+      if (errorActions) errorActions.style.display = show ? 'flex' : 'none';
+    }
+
     function getProgressRatio(e) {
       var rect = progressWrap.getBoundingClientRect();
       var clientX = e.clientX !== undefined ? e.clientX : (e.touches && e.touches[0] ? e.touches[0].clientX : 0);
@@ -322,14 +389,11 @@
 
     audio.addEventListener('play', function () {
       updatePlayBtn();
-      console.log('[音乐播放器] 开始播放');
     });
     audio.addEventListener('pause', function () {
       updatePlayBtn();
-      console.log('[音乐播放器] 暂停播放');
     });
     audio.addEventListener('ended', function () {
-      console.log('[音乐播放器] 播放结束，自动下一首');
       nextSong();
     });
 
@@ -349,6 +413,7 @@
         }
       }
       hasError = true;
+      container.classList.remove('mp-loading');
       var msg = '加载失败';
       if (err) {
         switch (err.code) {
@@ -361,13 +426,36 @@
       console.error('[音乐播放器] 音频错误:', msg, err);
       titleEl.textContent = msg;
       titleEl.style.color = 'var(--danger-color)';
+
+      // 错误自动恢复：仅在「终端错误」时触发（代理已回退失败，或本就直连）
+      // code === 1 为用户中止，不处理
+      if (code !== 1) {
+        errorCount++;
+        if (errorCount < 3 && playlist.length > 1) {
+          // 短暂展示错误后自动跳到下一首
+          if (autoSkipTimer) clearTimeout(autoSkipTimer);
+          autoSkipTimer = setTimeout(function () {
+            showToast('音源失效，已自动切换');
+            nextSong();
+          }, 1500);
+        } else if (errorCount >= 3) {
+          // 连续多首失败，停止自动跳转并展示手动操作按钮
+          if (autoSkipTimer) { clearTimeout(autoSkipTimer); autoSkipTimer = null; }
+          titleEl.textContent = '多首音源失效，请检查接口配置';
+          titleEl.style.color = 'var(--danger-color)';
+          showErrorActions(true);
+        }
+      }
     });
 
     audio.addEventListener('loadedmetadata', function () {
       hasError = false;
+      // 成功加载，重置错误计数并清理自动跳转
+      errorCount = 0;
+      if (autoSkipTimer) { clearTimeout(autoSkipTimer); autoSkipTimer = null; }
+      container.classList.remove('mp-loading');
       titleEl.style.color = '';
       totalTimeEl.textContent = fmtTime(audio.duration);
-      console.log('[音乐播放器] 元数据加载成功，时长:', fmtTime(audio.duration));
     });
 
     audio.addEventListener('timeupdate', function () {
@@ -377,6 +465,7 @@
         var pct = (audio.currentTime / dur) * 100;
         progressBar.style.width = pct + '%';
         curTimeEl.textContent = fmtTime(audio.currentTime);
+        progressWrap.setAttribute('aria-valuenow', String(Math.floor(pct)));
       }
     });
 
@@ -455,6 +544,7 @@
       listVisible = !listVisible;
       listWrap.style.display = listVisible ? 'block' : 'none';
       listToggle.classList.toggle('mp-list-open', listVisible);
+      listToggle.setAttribute('aria-expanded', listVisible ? 'true' : 'false');
     });
 
     listWrap.addEventListener('click', function (e) {
@@ -474,6 +564,5 @@
 
     loadSong(currentIndex);
     updateVolIcon();
-    console.log('[音乐播放器] 启动完成，当前歌曲索引:', currentIndex);
   });
 })();

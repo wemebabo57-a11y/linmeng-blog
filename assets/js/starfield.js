@@ -11,6 +11,7 @@
   var ctx = canvas.getContext('2d');
 
   var w, h, stars = [], meteors = [];
+  var animId;
   var STAR_DENSITY = 0.00008;
   var MAX_STARS = 180;
   var METEOR_CHANCE = 0.003;
@@ -113,7 +114,7 @@
       meteors.push(createMeteor());
     }
 
-    requestAnimationFrame(loop);
+    animId = requestAnimationFrame(loop);
   }
 
   // 监听主题变化，星星颜色会随主题切换
@@ -124,5 +125,19 @@
 
   window.addEventListener('resize', resize);
   resize();
-  requestAnimationFrame(loop);
+  animId = requestAnimationFrame(loop);
+
+  // 标签页隐藏时暂停 RAF，可见时恢复，避免后台耗电
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      if (animId) {
+        cancelAnimationFrame(animId);
+        animId = null;
+      }
+    } else {
+      if (!animId) {
+        animId = requestAnimationFrame(loop);
+      }
+    }
+  });
 })();

@@ -30,25 +30,38 @@ function probeService(array $service) {
         return ['online' => false, 'latency' => 0, 'message' => '端口不合法'];
     }
 
-    // SSRF 防护：拒绝内网/回环/链路本地地址，防止探测内部服务（含云元数据 169.254.169.254）
+    // SSRF 防护：仅拒绝回环地址和链路本地地址（含云元数据 169.254.169.254）
+    // 允许内网 IP，因为本功能用于监控站长自己的服务（含内网服务）
+    $isLoopbackOrLinkLocal = function (string $ip): bool {
+        if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+            return false;
+        }
+        // 127.0.0.0/8 回环
+        if (strpos($ip, '127.') === 0) {
+            return true;
+        }
+        // 169.254.0.0/16 链路本地（含云元数据 169.254.169.254）
+        if (strpos($ip, '169.254.') === 0) {
+            return true;
+        }
+        // ::1 IPv6 回环
+        if ($ip === '::1') {
+            return true;
+        }
+        return false;
+    };
+
     if (filter_var($host, FILTER_VALIDATE_IP)) {
-        $ipLong = ip2long($host);
-        if ($ipLong !== false) {
-            $isPrivate = (filter_var($host, FILTER_FLAG_NO_PRIV_RANGE) === false)
-                      || (filter_var($host, FILTER_FLAG_NO_RES_RANGE) === false);
-            if ($isPrivate) {
-                return ['online' => false, 'latency' => 0, 'message' => '禁止探测内网或保留地址'];
-            }
+        if ($isLoopbackOrLinkLocal($host)) {
+            return ['online' => false, 'latency' => 0, 'message' => '禁止探测回环或链路本地地址'];
         }
     } else {
-        // 域名解析后再校验
+        // 域名解析后校验
         $resolved = @gethostbynamel($host);
         if ($resolved) {
             foreach ($resolved as $resolvedIp) {
-                $isPrivate = (filter_var($resolvedIp, FILTER_FLAG_NO_PRIV_RANGE) === false)
-                          || (filter_var($resolvedIp, FILTER_FLAG_NO_RES_RANGE) === false);
-                if ($isPrivate) {
-                    return ['online' => false, 'latency' => 0, 'message' => '主机解析到内网地址，已拒绝'];
+                if ($isLoopbackOrLinkLocal($resolvedIp)) {
+                    return ['online' => false, 'latency' => 0, 'message' => '主机解析到回环/链路本地地址，已拒绝'];
                 }
             }
         }
@@ -57,9 +70,10 @@ function probeService(array $service) {
     $start = microtime(true);
 
     if ($type === 'http' && function_exists('curl_init')) {
-        $scheme = ($port === 443) ? 'https://' : 'http://';
+        $scheme = ($port === 443 || $port === 8443) ? 'https://' : 'http://';
         $url = $scheme . $host . ':' . $port . $path;
 
+        // 第一轮：HEAD 请求 + 严格 SSL
         $ch = curl_init($url);
         curl_setopt_array($ch, [
             CURLOPT_RETURNTRANSFER => true,
@@ -79,10 +93,63 @@ function probeService(array $service) {
 
         $latency = (int)round((microtime(true) - $start) * 1000);
 
+        // HEAD 成功
         if ($result !== false && $httpCode > 0) {
             return ['online' => true, 'latency' => $latency, 'message' => 'HTTP ' . $httpCode];
         }
-        return ['online' => false, 'latency' => $latency, 'message' => $error ?: '连接失败'];
+
+        // 第二轮：GET 请求回退（部分服务器不支持 HEAD）
+        $start2 = microtime(true);
+        $ch2 = curl_init($url);
+        curl_setopt_array($ch2, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER         => false,
+            CURLOPT_NOBODY         => false,
+            CURLOPT_TIMEOUT        => 6,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_SSL_VERIFYPEER => true,
+            CURLOPT_SSL_VERIFYHOST => 2,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT      => 'LM-ServiceMonitor/1.0',
+        ]);
+        $result2   = curl_exec($ch2);
+        $httpCode2 = (int)curl_getinfo($ch2, CURLINFO_HTTP_CODE);
+        $error2    = curl_error($ch2);
+        curl_close($ch2);
+
+        $latency2 = (int)round((microtime(true) - $start2) * 1000);
+
+        if ($result2 !== false && $httpCode2 > 0) {
+            return ['online' => true, 'latency' => $latency2, 'message' => 'HTTP ' . $httpCode2];
+        }
+
+        // 第三轮：放宽 SSL 验证（CA 证书包可能过时）
+        $start3 = microtime(true);
+        $ch3 = curl_init($url);
+        curl_setopt_array($ch3, [
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_HEADER         => false,
+            CURLOPT_NOBODY         => false,
+            CURLOPT_TIMEOUT        => 6,
+            CURLOPT_CONNECTTIMEOUT => 4,
+            CURLOPT_SSL_VERIFYPEER => false,
+            CURLOPT_SSL_VERIFYHOST => 0,
+            CURLOPT_FOLLOWLOCATION => false,
+            CURLOPT_USERAGENT      => 'LM-ServiceMonitor/1.0',
+        ]);
+        $result3   = curl_exec($ch3);
+        $httpCode3 = (int)curl_getinfo($ch3, CURLINFO_HTTP_CODE);
+        $error3    = curl_error($ch3);
+        curl_close($ch3);
+
+        $latency3 = (int)round((microtime(true) - $start3) * 1000);
+
+        if ($result3 !== false && $httpCode3 > 0) {
+            return ['online' => true, 'latency' => $latency3, 'message' => 'HTTP ' . $httpCode3 . ' (SSL验证已跳过)'];
+        }
+
+        $lastError = $error3 ?: $error2 ?: $error ?: '连接失败';
+        return ['online' => false, 'latency' => $latency3, 'message' => $lastError];
     }
 
     // TCP 探测（type=tcp，或 http 但无 curl 时降级为端口连通性检测）

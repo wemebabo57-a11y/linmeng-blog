@@ -123,6 +123,13 @@ if (!$validate['valid']) {
     exit;
 }
 
+// 文件扩展名白名单校验 + 清洗原始文件名（防 stored-XSS）
+$fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
+if (!in_array($fileExt, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
+    echo json_encode(['success' => false, 'message' => '不支持的图片格式']);
+    exit;
+}
+
 // 重新编码图片以剥离 EXIF/嵌入式 payload（图片马）
 // 使用与本地 uploads 相同的 Security::reprocessImage，确保上传到 GitHub 的产物已被清洗
 $reprocessed = Security::reprocessImage($file['tmp_name'], $file['tmp_name'], $file['type']);
@@ -146,12 +153,6 @@ if (empty($safeUsername)) {
     $safeUsername = 'user_' . $user['id'];
 }
 
-// 文件扩展名白名单校验 + 清洗原始文件名（防 stored-XSS）
-$fileExt = strtolower(pathinfo($file['name'], PATHINFO_EXTENSION));
-if (!in_array($fileExt, ['jpg', 'jpeg', 'png', 'gif', 'webp'], true)) {
-    echo json_encode(['success' => false, 'message' => '不支持的图片格式']);
-    exit;
-}
 $safeFilename = date('Ymd_His') . '_' . Security::randomString(8) . '.' . $fileExt;
 $githubPath = $safeUsername . '/' . $safeFilename;
 

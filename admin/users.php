@@ -19,13 +19,13 @@ $error = '';
 $success = '';
 
 // 处理删除
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_user' && isset($_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         die('CSRF验证失败');
     }
     
-    $id = (int)$_GET['id'];
+    $id = (int)$_POST['id'];
 
     // 不能删除自己
     if ($id === $_SESSION['user_id']) {
@@ -264,9 +264,12 @@ require_once LM_ROOT . '/admin/template/header.php';
                                 data-edit-user-role="<?php echo e($user['role']); ?>"
                                 data-edit-user-status="<?php echo (int)$user['status']; ?>">编辑</button>
                         <?php if ($user['id'] !== $_SESSION['user_id']): ?>
-                        <a href="?action=delete&id=<?php echo $user['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                           class="btn btn-sm btn-danger"
-                           data-confirm="确定要删除该用户吗？">删除</a>
+                        <form method="POST" action="" class="form-delete-user" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="delete_user">
+                            <input type="hidden" name="id" value="<?php echo (int)$user['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该用户吗？">删除</button>
+                        </form>
                         <?php endif; ?>
                     </td>
                 </tr>

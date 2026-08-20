@@ -19,13 +19,13 @@ $error = '';
 $success = '';
 
 // 处理删除
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_link' && isset($_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         die('CSRF验证失败');
     }
     
-    $id = (int)$_GET['id'];
+    $id = (int)$_POST['id'];
     try {
         db()->delete('lm_link', 'id = ?', [$id]);
         $success = '友链已删除';
@@ -182,9 +182,12 @@ require_once LM_ROOT . '/admin/template/header.php';
                                 data-edit-link-logo="<?php echo e($link['logo']); ?>"
                                 data-edit-link-sort="<?php echo (int)$link['sort_order']; ?>"
                                 data-edit-link-status="<?php echo (int)$link['status']; ?>">编辑</button>
-                        <a href="?action=delete&id=<?php echo $link['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                           class="btn btn-sm btn-danger"
-                           data-confirm="确定要删除该友链吗？">删除</a>
+                        <form method="POST" action="" class="form-delete-link" style="display: inline;">
+                            <?php echo Security::csrfField(); ?>
+                            <input type="hidden" name="action" value="delete_link">
+                            <input type="hidden" name="id" value="<?php echo (int)$link['id']; ?>">
+                            <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该友链吗？">删除</button>
+                        </form>
                     </td>
                 </tr>
                 <?php endforeach; ?>

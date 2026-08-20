@@ -28,6 +28,11 @@ $article = [
     'status' => 'published',
     'is_top' => 0
 ];
+$articleStorage = 'database';
+$originalArticleContent = '';
+$preparedMarkdown = null;
+$articleDatabaseSaved = false;
+$markdownSourceUnavailable = false;
 
 $articleImages = [];
 $error = '';
@@ -48,6 +53,18 @@ if (isset($_GET['id'])) {
         $existing = db()->fetchOne("SELECT * FROM lm_article WHERE id = ?", [$id]);
         if ($existing) {
             $article = $existing;
+            $originalArticleContent = (string)$existing['content'];
+            $articleStorage = ArticleContent::isMarkdownArticle($article) ? 'markdown' : 'database';
+            if ($articleStorage === 'markdown') {
+                $markdownSource = ArticleContent::source($article);
+                if ($markdownSource === '') {
+                    $markdownSourceUnavailable = true;
+                    $article['content'] = '';
+                    $error = 'Markdown 源文件缺失或校验失败。前台仍使用数据库快照展示，但当前禁止保存，请先从备份恢复 includes/articles 中的源文件。';
+                } else {
+                    $article['content'] = $markdownSource;
+                }
+            }
             $pageTitle = '编辑文章';
 
             // 获取文章图片
@@ -66,15 +83,26 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         $error = 'CSRF验证失败';
+    } elseif ($markdownSourceUnavailable) {
+        $error = 'Markdown 源文件不可用，已阻止覆盖保存。请先恢复源文件。';
     } else {
         $title = trim($_POST['title'] ?? '');
         $slug = trim($_POST['slug'] ?? '');
-        $content = Security::xssCleanHtml($_POST['content'] ?? '');
+        $requestedStorage = ($_POST['content_storage'] ?? 'database') === 'markdown' ? 'markdown' : 'database';
+        // Existing articles keep their original storage mode. This prevents implicit,
+        // lossy conversion between legacy HTML and Markdown source.
+        $articleStorage = $article['id'] > 0
+            ? (ArticleContent::isMarkdownArticle(['content' => $originalArticleContent]) ? 'markdown' : 'database')
+            : $requestedStorage;
+        $submittedContent = (string)($_POST['content'] ?? '');
+        $content = $articleStorage === 'markdown'
+            ? str_replace(["\r\n", "\r"], "\n", $submittedContent)
+            : Security::xssCleanHtml($submittedContent);
         $excerpt = trim($_POST['excerpt'] ?? '');
         $categoryId = (int)($_POST['category_id'] ?? 0);
         $tags = trim($_POST['tags'] ?? '');
         $status = in_array($_POST['status'] ?? '', ['published', 'draft']) ? $_POST['status'] : 'published';
-        $isTop = isset($_POST['is_top']) ? 1 : 0;
+        $isTop = isset($_POST['pinned']) ? 1 : 0;
         $coverImage = trim($_POST['cover_image'] ?? '');
 
         $maxImages = 10;
@@ -124,11 +152,19 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $counter++;
                     }
 
+                    if ($articleStorage === 'markdown') {
+                        $preparedMarkdown = ArticleContent::prepareMarkdown($content, $slug);
+                        $content = $preparedMarkdown['content'];
+                        $excerptSource = getArticlePlainText(['content' => $content]);
+                    } else {
+                        $excerptSource = strip_tags($content);
+                    }
+
                     $data = [
                         'title' => $title,
                         'slug' => $slug,
                         'content' => $content,
-                        'excerpt' => $excerpt ?: getExcerpt($content, 30),
+                        'excerpt' => $excerpt ?: getExcerpt($excerptSource, 80),
                         'cover_image' => $coverImage,
                         'category_id' => $categoryId,
                         'tags' => $tags,
@@ -140,6 +176,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         // 更新：不覆盖原作者，仅刷新 updated_at
                         $data['updated_at'] = date('Y-m-d H:i:s');
                         db()->update('lm_article', $data, 'id = ?', [$article['id']]);
+                        $articleDatabaseSaved = true;
                         $articleId = $article['id'];
                         $success = '文章已更新';
                     } else {
@@ -154,6 +191,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                             // 新建：仅新建时设置作者，避免覆盖原文章作者
                             $data['author_id'] = $_SESSION['user_id'];
                             $articleId = db()->insert('lm_article', $data);
+                            $articleDatabaseSaved = true;
                             $article['id'] = $articleId;
                             $success = '文章已发布';
                         }
@@ -161,6 +199,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
                     // 只有成功保存后才处理图片和跳转
                     if (empty($error)) {
+                        if ($preparedMarkdown !== null) {
+                            ArticleContent::commitPrepared($preparedMarkdown);
+                        }
+                        ArticleContent::cleanupPrevious($originalArticleContent, $content);
                         // ------- 图片总数管理 -------
                         // 现有图片
                         $existingImages = [];
@@ -278,8 +320,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $createdFlag = ($success === '文章已发布') ? '&created=1' : '';
                         header('Location: article-edit.php?id=' . $articleId . '&success=1' . $createdFlag);
                         exit;
+                    } elseif ($preparedMarkdown !== null && !$articleDatabaseSaved) {
+                        ArticleContent::discardPrepared($preparedMarkdown);
                     }
                 } catch (Exception $e) {
+                    if ($preparedMarkdown !== null && !$articleDatabaseSaved) {
+                        ArticleContent::discardPrepared($preparedMarkdown);
+                    }
                     $error = '保存失败: ' . $e->getMessage();
                 }
             }
@@ -408,14 +455,36 @@ require_once LM_ROOT . '/admin/template/header.php';
             </div>
 
             <div class="form-group">
-                <label class="form-label">文章内容 *</label>
-                <textarea name="content" class="form-textarea" placeholder="支持HTML标签" required style="min-height: 400px;"><?php echo e($article['content']); ?></textarea>
-                <div class="form-hint">支持HTML标签: p, br, strong, em, h1-h6, ul, ol, li, blockquote, code, pre, a, img 等</div>
+                <div class="article-storage-heading">
+                    <label class="form-label" for="article-content">文章内容 *</label>
+                    <div class="article-storage-switch" role="radiogroup" aria-label="正文存储方式">
+                        <label class="storage-option<?php echo $articleStorage === 'markdown' ? ' active' : ''; ?>">
+                            <input type="radio" name="content_storage" value="markdown" <?php echo $articleStorage === 'markdown' ? 'checked' : ''; ?> <?php echo $article['id'] > 0 ? 'disabled' : ''; ?>>
+                            <span>Markdown 文件</span>
+                        </label>
+                        <label class="storage-option<?php echo $articleStorage === 'database' ? ' active' : ''; ?>">
+                            <input type="radio" name="content_storage" value="database" <?php echo $articleStorage === 'database' ? 'checked' : ''; ?> <?php echo $article['id'] > 0 ? 'disabled' : ''; ?>>
+                            <span>数据库 HTML</span>
+                        </label>
+                    </div>
+                </div>
+                <div class="storage-compat-note">
+                    <?php echo $article['id'] > 0 ? '既有文章已锁定原存储方式，避免 HTML 与 Markdown 隐式转换造成内容损坏。' : 'Markdown 模式会在数据库保留渲染快照，评论、点赞、搜索和文章链接继续兼容。'; ?>
+                </div>
+                <div class="editor-toolbar" style="display: flex; gap: 8px; align-items: center; padding: 8px 10px; margin-bottom: 8px; background: var(--bg-subtle); border: 1px solid var(--border-color); border-radius: var(--radius); border-bottom-left-radius: 0; border-bottom-right-radius: 0;">
+                    <button type="button" class="btn btn-secondary btn-sm" id="insert-image-btn" title="在光标处插入图片" style="display: inline-flex; align-items: center; gap: 4px; padding: 4px 12px; font-size: 0.85rem;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg>
+                        插入图片
+                    </button>
+                    <span style="font-size: 0.78rem; color: var(--text-light);">在光标位置插入图片（上传或直链）</span>
+                </div>
+                <textarea name="content" id="article-content" class="form-textarea article-source-editor" placeholder="<?php echo $articleStorage === 'markdown' ? '使用 Markdown 编写文章' : '支持 HTML 标签'; ?>" required><?php echo e($article['content']); ?></textarea>
+                <div class="form-hint" id="content-storage-hint"><?php echo $articleStorage === 'markdown' ? '支持标题、列表、引用、代码块、链接和图片等 Markdown 语法。' : '支持 p、strong、h1-h6、列表、引用、代码、链接、图片等 HTML 标签。'; ?></div>
             </div>
 
             <div style="display: flex; gap: 16px; align-items: center; margin-bottom: 20px;">
                 <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-                    <input type="checkbox" name="is_top" <?php echo $article['is_top'] ? 'checked' : ''; ?> style="width: auto;">
+                    <input type="checkbox" name="pinned" value="1" <?php echo $article['is_top'] ? 'checked' : ''; ?> style="width: auto;">
                     <span>置顶文章</span>
                 </label>
 
@@ -429,13 +498,57 @@ require_once LM_ROOT . '/admin/template/header.php';
             </div>
 
             <div style="display: flex; gap: 12px;">
-                <button type="submit" class="btn btn-primary" id="submit-btn"><?php echo $article['id'] > 0 ? '保存修改' : '发布文章'; ?></button>
+                <button type="submit" class="btn btn-primary" id="submit-btn" <?php echo $markdownSourceUnavailable ? 'disabled' : ''; ?>><?php echo $markdownSourceUnavailable ? '源文件不可用' : ($article['id'] > 0 ? '保存修改' : '发布文章'); ?></button>
                 <a href="articles.php" class="btn btn-secondary">返回列表</a>
                 <?php if ($article['id'] > 0): ?>
                 <a href="/article.php?slug=<?php echo e($article['slug']); ?>" target="_blank" class="btn btn-secondary">预览</a>
                 <?php endif; ?>
             </div>
         </form>
+    </div>
+</div>
+
+<!-- 插入图片模态框 -->
+<div class="modal-overlay" id="inline-image-modal" role="dialog" aria-modal="true" aria-labelledby="inline-image-modal-title" aria-hidden="true" style="display: none; position: fixed; inset: 0; background: rgba(45,31,42,0.55); backdrop-filter: blur(4px); z-index: 1000; align-items: center; justify-content: center;">
+    <div class="modal-panel" role="document" style="background: var(--card-bg); border-radius: var(--radius-lg); box-shadow: var(--shadow-xl); max-width: 480px; width: calc(100% - 32px); max-height: 90vh; overflow: auto;">
+        <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center; padding: 16px 20px; border-bottom: 1px solid var(--border-subtle);">
+            <h3 id="inline-image-modal-title" style="margin: 0; font-size: 1.05rem; color: var(--text-color);">在光标处插入图片</h3>
+            <button type="button" class="modal-close-btn" id="inline-image-close" aria-label="关闭" style="background: none; border: none; font-size: 1.5rem; color: var(--text-light); cursor: pointer; padding: 0; width: 32px; height: 32px; line-height: 32px; text-align: center; border-radius: var(--radius-sm);">×</button>
+        </div>
+        <div class="modal-body" style="padding: 20px;">
+            <!-- Tab 切换 -->
+            <div class="inline-image-tabs" role="tablist" style="display: flex; gap: 4px; margin-bottom: 16px; border-bottom: 1px solid var(--border-subtle);">
+                <button type="button" role="tab" aria-selected="true" id="tab-upload" class="inline-image-tab active" style="background: none; border: none; padding: 8px 16px; cursor: pointer; font-size: 0.9rem; color: var(--primary-color); border-bottom: 2px solid var(--primary-color); margin-bottom: -1px;">上传本地图片</button>
+                <button type="button" role="tab" aria-selected="false" id="tab-direct" class="inline-image-tab" style="background: none; border: none; padding: 8px 16px; cursor: pointer; font-size: 0.9rem; color: var(--text-secondary); border-bottom: 2px solid transparent; margin-bottom: -1px;">填写图片直链</button>
+            </div>
+
+            <!-- 上传面板 -->
+            <div class="inline-image-panel" id="panel-upload" role="tabpanel" aria-labelledby="tab-upload">
+                <input type="file" id="inline-image-file" accept="image/jpeg,image/png,image/gif,image/webp" style="display: block; margin-bottom: 12px; width: 100%; padding: 8px; border: 1px dashed var(--border-color); border-radius: var(--radius); background: var(--bg-subtle);">
+                <div class="inline-image-preview" id="inline-preview-upload" style="display: none; margin-bottom: 12px; text-align: center; padding: 12px; background: var(--bg-subtle); border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+                    <img id="inline-preview-img-upload" src="" alt="预览" style="max-width: 100%; max-height: 220px; border-radius: var(--radius-sm); margin: 0 auto;">
+                </div>
+                <div class="inline-image-hint" style="font-size: 0.78rem; color: var(--text-light); margin-bottom: 12px;">支持 JPG/PNG/GIF/WEBP，单张最大 5MB</div>
+            </div>
+
+            <!-- 直链面板 -->
+            <div class="inline-image-panel" id="panel-direct" role="tabpanel" aria-labelledby="tab-direct" style="display: none;">
+                <input type="url" id="inline-image-url" placeholder="https://example.com/image.jpg" style="display: block; width: 100%; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: var(--radius); font-size: 0.9rem; background: var(--input-bg); color: var(--text-color); margin-bottom: 12px;">
+                <div class="inline-image-preview" id="inline-preview-direct" style="display: none; margin-bottom: 12px; text-align: center; padding: 12px; background: var(--bg-subtle); border-radius: var(--radius); border: 1px solid var(--border-subtle);">
+                    <img id="inline-preview-img-direct" src="" alt="预览" style="max-width: 100%; max-height: 220px; border-radius: var(--radius-sm); margin: 0 auto;">
+                </div>
+                <div class="inline-image-hint" style="font-size: 0.78rem; color: var(--text-light); margin-bottom: 12px;">请输入完整图片 URL（以 http:// 或 https:// 开头）</div>
+            </div>
+
+            <!-- 错误提示 -->
+            <div class="inline-image-error" id="inline-image-error" role="alert" style="display: none; margin-bottom: 12px; padding: 8px 12px; background: var(--danger-light); color: var(--danger-color); border-radius: var(--radius); font-size: 0.85rem; border: 1px solid var(--danger-color);"></div>
+
+            <!-- 操作按钮 -->
+            <div class="modal-footer" style="display: flex; gap: 8px; justify-content: flex-end; padding-top: 8px; border-top: 1px solid var(--border-subtle); margin-top: 8px;">
+                <button type="button" class="btn btn-secondary btn-sm" id="inline-image-cancel" style="padding: 6px 16px;">取消</button>
+                <button type="button" class="btn btn-primary btn-sm" id="inline-image-confirm" style="padding: 6px 16px;">插入图片</button>
+            </div>
+        </div>
     </div>
 </div>
 

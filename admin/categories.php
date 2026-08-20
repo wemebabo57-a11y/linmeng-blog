@@ -20,12 +20,12 @@ $error = '';
 $success = '';
 
 // 处理删除
-if (isset($_GET['action']) && $_GET['action'] === 'delete' && isset($_GET['id'])) {
-    $token = $_GET['token'] ?? '';
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && ($_POST['action'] ?? '') === 'delete_category' && isset($_POST['id'])) {
+    $token = $_POST[CSRF_TOKEN_NAME] ?? '';
     if (!Security::validateToken($token)) {
         $error = 'CSRF验证失败';
     } else {
-        $id = (int)$_GET['id'];
+        $id = (int)$_POST['id'];
         try {
             // 检查该分类下是否有文章
             $articleCount = db()->fetchColumn("SELECT COUNT(*) FROM lm_article WHERE category_id = ?", [$id]);
@@ -211,9 +211,12 @@ require_once LM_ROOT . '/admin/template/header.php';
                     <td>
                         <div style="display: flex; gap: 4px;">
                             <a href="?edit=<?php echo $category['id']; ?>" class="btn btn-sm btn-primary">编辑</a>
-                            <a href="?action=delete&id=<?php echo $category['id']; ?>&token=<?php echo Security::generateToken(); ?>"
-                               class="btn btn-sm btn-danger"
-                               data-confirm="确定要删除该分类吗？">删除</a>
+                            <form method="POST" action="" class="form-delete-category" style="display: inline;">
+                                <?php echo Security::csrfField(); ?>
+                                <input type="hidden" name="action" value="delete_category">
+                                <input type="hidden" name="id" value="<?php echo (int)$category['id']; ?>">
+                                <button type="submit" class="btn btn-sm btn-danger" data-confirm="确定要删除该分类吗？">删除</button>
+                            </form>
                         </div>
                     </td>
                 </tr>
