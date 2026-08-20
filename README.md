@@ -2,6 +2,7 @@
 
 > 一个现代化、注重安全与性能的 PHP 个人博客系统。自带可视化安装向导，访问 `/setup` 三分钟即可上线。
 
+[![GitHub](https://img.shields.io/static/v1?label=GitHub&message=linmeng-blog&color=181717&logo=github)](https://github.com/wemebabo57-a11y/linmeng-blog)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![PHP](https://img.shields.io/badge/PHP-%E2%89%A57.4-777bb4)
 ![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479a1)
@@ -75,7 +76,7 @@
 ### 1. 获取代码
 
 ```bash
-git clone https://github.com/你的用户名/linmeng-blog.git
+git clone https://github.com/wemebabo57-a11y/linmeng-blog.git
 # 或直接下载 ZIP 上传到服务器
 ```
 
@@ -278,7 +279,7 @@ server {
 
 ```bash
 # 克隆并开发
-git clone https://github.com/你的用户名/linmeng-blog.git
+git clone https://github.com/wemebabo57-a11y/linmeng-blog.git
 # 修改代码后请确保：
 #   - 不要在代码中硬编码任何密钥 / 密码 / Token
 #   - 敏感配置一律走 .env 或 lm_setting 数据表
