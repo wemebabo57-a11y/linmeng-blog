@@ -10,8 +10,11 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+// 文章页包含实时互动数据（评论列表、按 IP 判断的点赞状态、点赞数），
+// 永不进 CDN 共享缓存，保证评论/点赞即时可见。
+lm_no_cache_headers();
 
 $slug = isset($_GET['slug']) ? trim($_GET['slug']) : '';
 
@@ -40,9 +43,9 @@ try {
         exit;
     }
     
-    // 增加浏览量（使用原子操作避免竞态条件）
-    db()->query("UPDATE lm_article SET views = views + 1 WHERE id = ?", [$article['id']]);
-    $article['views']++;
+    // 浏览量改为前端异步上报（main.js -> api/visit.php），
+    // 页面因此可安全交给 CDN 缓存而不丢失计数。
+    $articleViewId = (int)$article['id'];
     
     // 获取文章图片
     $articleImages = db()->fetchAll(
@@ -96,6 +99,8 @@ try {
 
 $pageTitle = $article['title'];
 $currentPage = '';
+$isArticlePage = true;
+$articlePlainText = getArticlePlainText($article);
 
 // 获取评论
 $comments = [];
@@ -109,17 +114,26 @@ try {
         [$article['id']]
     );
     
-    // 获取回复
-    foreach ($comments as &$comment) {
+    // 批量获取回复，避免评论数量增加后产生 N+1 查询
+    $commentIds = array_map('intval', array_column($comments, 'id'));
+    $repliesByParent = [];
+    if (!empty($commentIds)) {
+        $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
         $replies = db()->fetchAll(
-            "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar 
-             FROM lm_comment c 
-             LEFT JOIN lm_admin u ON c.user_id = u.id 
-             WHERE c.parent_id = ? AND c.status = 1 
+            "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar
+             FROM lm_comment c
+             LEFT JOIN lm_admin u ON c.user_id = u.id
+             WHERE c.parent_id IN ({$placeholders}) AND c.status = 1
              ORDER BY c.created_at ASC",
-            [$comment['id']]
+            $commentIds
         );
-        $comment['replies'] = $replies;
+        foreach ($replies as $reply) {
+            $parentId = (int)$reply['parent_id'];
+            $repliesByParent[$parentId][] = $reply;
+        }
+    }
+    foreach ($comments as &$comment) {
+        $comment['replies'] = $repliesByParent[(int)$comment['id']] ?? [];
     }
     unset($comment);
 } catch (Exception $e) {
@@ -148,9 +162,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         $content = trim($_POST['content'] ?? '');
         $parentId = isset($_POST['parent_id']) ? (int)$_POST['parent_id'] : 0;
 
-        // 校验网站 URL（仅 http/https，防 javascript: 等危险协议）
-        if ($website !== '' && !filter_var($website, FILTER_VALIDATE_URL)) {
-            $website = '';
+        // 校验网站 URL，仅允许 http/https，防止 javascript: 等危险协议
+        if ($website !== '') {
+            $website = Security::sanitizeUrl($website);
+            if ($website === '#') {
+                $website = '';
+            }
         }
 
         if (empty($nickname) || empty($email) || empty($content)) {
@@ -208,16 +225,24 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     [$article['id']]
                 );
                 
-                foreach ($comments as &$comment) {
+                $commentIds = array_map('intval', array_column($comments, 'id'));
+                $repliesByParent = [];
+                if (!empty($commentIds)) {
+                    $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
                     $replies = db()->fetchAll(
-                        "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar 
-                         FROM lm_comment c 
-                         LEFT JOIN lm_admin u ON c.user_id = u.id 
-                         WHERE c.parent_id = ? AND c.status = 1 
+                        "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar
+                         FROM lm_comment c
+                         LEFT JOIN lm_admin u ON c.user_id = u.id
+                         WHERE c.parent_id IN ({$placeholders}) AND c.status = 1
                          ORDER BY c.created_at ASC",
-                        [$comment['id']]
+                        $commentIds
                     );
-                    $comment['replies'] = $replies;
+                    foreach ($replies as $reply) {
+                        $repliesByParent[(int)$reply['parent_id']][] = $reply;
+                    }
+                }
+                foreach ($comments as &$comment) {
+                    $comment['replies'] = $repliesByParent[(int)$comment['id']] ?? [];
                 }
                 unset($comment);
                 
@@ -236,7 +261,7 @@ require_once LM_ROOT . '/template/header.php';
 <article class="card article-detail-card">
     <?php if ($article['cover_image']): ?>
     <div class="article-detail-cover">
-        <img src="<?php echo e($article['cover_image']); ?>" alt="<?php echo e($article['title']); ?>">
+        <img src="<?php echo e($article['cover_image']); ?>" alt="<?php echo e($article['title']); ?>" decoding="async" width="1200" height="675">
     </div>
     <?php endif; ?>
 
@@ -253,7 +278,7 @@ require_once LM_ROOT . '/template/header.php';
             <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> <?php echo e($article['author_name']); ?></span>
             <?php endif; ?>
             <?php
-            $contentLength = mb_strlen(strip_tags($article['content']), 'UTF-8');
+            $contentLength = mb_strlen($articlePlainText, 'UTF-8');
             $readingMinutes = max(1, ceil($contentLength / 500));
             ?>
             <span class="meta-item reading-time" id="reading-time"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg> <?php echo $readingMinutes; ?> 分钟阅读</span>
@@ -273,8 +298,8 @@ require_once LM_ROOT . '/template/header.php';
         <div class="ai-summary-panel">
             <div class="ai-summary-header">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2a10 10 0 1 0 10 10 4 4 0 0 1-5-5 4 4 0 0 1-5-5"/><path d="M8.5 8.5v.01"/><path d="M16 15.5v.01"/><path d="M12 12v.01"/><path d="M11 17v.01"/><path d="M7 14v.01"/></svg>
-                <span style="font-weight: 600;">AI 总结</span>
-                <select id="ai-provider-select" class="form-select" style="width: auto; min-width: 180px;">
+                <span class="ai-summary-label">AI 总结</span>
+                <select id="ai-provider-select" class="form-select ai-provider-select">
                     <?php foreach ($aiProviders as $p): ?>
                     <option value="<?php echo (int)$p['id']; ?>" <?php echo ((int)$p['id'] === $defaultProviderId) ? 'selected' : ''; ?>>
                         <?php echo e($p['name']); ?>（<?php echo e($p['model']); ?>）
@@ -288,14 +313,14 @@ require_once LM_ROOT . '/template/header.php';
             <div id="ai-summary-loading" class="ai-summary-loading" style="display: none;">
                 正在生成，请稍候...
             </div>
-            <div id="ai-summary-error" class="alert alert-error" style="display: none; margin: 0; padding: 10px 14px; font-size: 0.85rem;"></div>
+            <div id="ai-summary-error" class="alert alert-error ai-summary-alert"></div>
             <div id="ai-summary-content" class="ai-summary-content" style="display: none;">
             </div>
         </div>
         <?php elseif (getSetting('ai_summary_enabled', '0') === '1' && isAdmin()): ?>
         <!-- AI 总结已启用但无可用模型，向管理员提示 -->
         <div class="ai-summary-panel">
-            <div class="alert alert-warning" style="margin: 0; font-size: 0.85rem;">
+            <div class="alert alert-warning ai-summary-alert">
                 <strong>AI 总结已启用</strong>，但当前没有可用的 AI Provider。
                 请前往 <a href="/admin/ai-providers.php">后台 AI 管理</a> 添加并启用至少一个 Provider。
             </div>
@@ -303,17 +328,17 @@ require_once LM_ROOT . '/template/header.php';
         <?php endif; ?>
         
         <div class="article-content" id="article-content">
-            <?php echo $article['content']; ?>
+            <?php echo renderArticleContent($article); ?>
         </div>
         
         <!-- 文章图片画廊 -->
         <?php if (!empty($articleImages)): ?>
         <div class="article-gallery">
-            <?php foreach (array_slice($articleImages, 0, 6) as $index => $img): ?>
-            <div class="article-gallery-item">
-                <img src="<?php echo e($img['image_url']); ?>" alt="文章图片" loading="lazy">
+            <?php foreach ($articleImages as $index => $img): ?>
+            <div class="article-gallery-item<?php echo $index >= 6 ? ' article-gallery-item--extra' : ''; ?>">
+                <img src="<?php echo e($img['image_url']); ?>" alt="<?php echo e($article['title']); ?> - 图片 <?php echo (int)$index + 1; ?>" loading="lazy" decoding="async" width="800" height="450">
                 <?php if ($index === 5 && count($articleImages) > 6): ?>
-                <div class="article-gallery-more">+<?php echo count($articleImages) - 6; ?></div>
+                <button type="button" class="article-gallery-more" aria-label="查看全部 <?php echo count($articleImages); ?> 张图片">+<?php echo count($articleImages) - 6; ?></button>
                 <?php endif; ?>
             </div>
             <?php endforeach; ?>
@@ -324,7 +349,10 @@ require_once LM_ROOT . '/template/header.php';
         <div class="article-tags article-detail-tags">
             <span class="article-tags-label">标签:</span>
             <?php foreach (explode(',', $article['tags']) as $tag): ?>
-            <span class="tag"><?php echo e(trim($tag)); ?></span>
+            <?php $tag = trim($tag); ?>
+            <?php if ($tag !== ''): ?>
+            <a href="/?search=<?php echo urlencode($tag); ?>" class="tag"><?php echo e($tag); ?></a>
+            <?php endif; ?>
             <?php endforeach; ?>
         </div>
         <?php endif; ?>
@@ -350,7 +378,7 @@ require_once LM_ROOT . '/template/header.php';
 
         <!-- 文章互动按钮 -->
         <div class="article-actions">
-            <button class="article-action-btn like-btn <?php echo $hasLiked ? 'active' : ''; ?>" data-article-id="<?php echo $article['id']; ?>">
+            <button type="button" class="article-action-btn like-btn <?php echo $hasLiked ? 'active' : ''; ?>" data-article-id="<?php echo $article['id']; ?>" aria-pressed="<?php echo $hasLiked ? 'true' : 'false'; ?>">
                 <span><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg></span>
                 <span>点赞</span>
                 <span class="like-count"><?php echo $likeCount; ?></span>
@@ -376,77 +404,82 @@ require_once LM_ROOT . '/template/header.php';
 </article>
 
 <!-- 分享弹窗 -->
-<div class="share-modal" id="share-modal" role="dialog" aria-modal="true" aria-label="分享" aria-hidden="true">
+<div class="share-modal" id="share-modal" role="dialog" aria-modal="true" aria-labelledby="share-modal-title" aria-hidden="true">
     <div class="share-modal-backdrop"></div>
     <div class="share-modal-panel">
-        <div class="share-modal-title">
+        <div class="share-modal-title" id="share-modal-title">
             分享文章
-            <button class="share-modal-close" aria-label="关闭">
+            <button type="button" class="share-modal-close" aria-label="关闭分享弹窗">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
             </button>
         </div>
         <div class="share-grid">
-            <div class="share-item" data-share="twitter">
+            <button type="button" class="share-item" data-share="twitter">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817L4.99 21.75H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231zm-1.161 17.52h1.833L7.084 4.126H5.117z"/></svg>
                 <span>X</span>
-            </div>
-            <div class="share-item" data-share="weibo">
+            </button>
+            <button type="button" class="share-item" data-share="weibo">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M10.098 20.323c-3.977.391-7.414-1.406-7.672-4.02-.259-2.609 2.759-5.047 6.74-5.441 3.979-.394 7.413 1.404 7.671 4.018.259 2.6-2.759 5.049-6.739 5.443zM9.05 17.219c-.384.616-1.208.884-1.829.602-.612-.279-.793-.991-.406-1.593.379-.595 1.176-.861 1.793-.601.622.263.82.972.442 1.592zm1.27-1.627c-.141.237-.449.353-.689.253-.236-.09-.313-.361-.177-.586.138-.227.436-.346.672-.24.239.09.315.36.194.573zm.176-2.719c-1.893-.493-4.033.45-4.857 2.118-.836 1.704-.026 3.591 1.886 4.21 1.983.642 4.318-.341 5.132-2.179.8-1.793-.201-3.642-2.161-4.149zm7.563-1.224c-.346-.105-.579-.18-.401-.649.386-1.031.425-1.922.008-2.557-.781-1.19-2.924-1.126-5.354-.034 0 0-.767.334-.571-.271.378-1.19.321-2.188-.267-2.765-1.336-1.308-4.887.047-7.93 3.026C1.369 10.368 0 12.923 0 15.129c0 4.224 5.407 6.804 10.695 6.804 6.936 0 11.551-4.021 11.551-7.21 0-1.925-1.628-3.013-3.187-3.474zm.799-4.962c-.778-.825-1.924-1.156-2.984-.984-.357.058-.553.389-.421.73.132.341.478.523.841.447.633-.129 1.31.064 1.766.547.458.484.604 1.159.423 1.782-.093.317.081.653.404.748.323.095.666-.075.764-.389.305-1.026.046-2.199-.793-2.881zm2.273-2.155c-1.615-1.714-3.995-2.4-6.2-2.043-.43.069-.721.473-.58.89.142.418.565.64.998.555 1.699-.274 3.532.256 4.782 1.585 1.25 1.328 1.671 3.173 1.24 4.863-.109.404.142.818.56.924.418.106.849-.135.965-.537.574-2.144.03-4.569-1.765-6.237z"/></svg>
                 <span>微博</span>
-            </div>
-            <div class="share-item" data-share="facebook">
+            </button>
+            <button type="button" class="share-item" data-share="facebook">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M24 12.073c0-6.627-5.373-12-12-12s-12 5.373-12 12c0 5.99 4.388 10.954 10.125 11.854v-8.385H7.078v-3.47h3.047V9.43c0-3.007 1.792-4.669 4.533-4.669 1.312 0 2.686.235 2.686.235v2.953H15.83c-1.491 0-1.956.925-1.956 1.874v2.25h3.328l-.532 3.47h-2.796v8.385C19.612 23.027 24 18.062 24 12.073z"/></svg>
                 <span>Facebook</span>
-            </div>
-            <div class="share-item" data-share="copy">
+            </button>
+            <button type="button" class="share-item" data-share="copy">
                 <svg xmlns="http://www.w3.org/2000/svg" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                 <span>复制链接</span>
-            </div>
+            </button>
         </div>
         <div class="share-link-box">
-            <input type="text" class="share-link-input" value="" readonly>
+            <label for="share-link-input" class="visually-hidden">文章分享链接</label>
+            <input type="text" id="share-link-input" class="share-link-input" value="" readonly>
             <button type="button" class="btn btn-primary share-copy-btn">复制</button>
         </div>
     </div>
 </div>
 
 <!-- 评论区 -->
-<div class="card">
+<div class="card" id="comments">
     <div class="card-header">
         <div class="card-title"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg> 评论 (<?php echo count($comments); ?>)</div>
     </div>
     <div class="card-body">
         <?php if ($commentSuccess): ?>
-        <div class="alert alert-success"><?php echo e($commentSuccess); ?></div>
+        <div class="alert alert-success" role="status"><?php echo e($commentSuccess); ?></div>
         <?php endif; ?>
         
         <?php if ($commentError): ?>
-        <div class="alert alert-error"><?php echo e($commentError); ?></div>
+        <div class="alert alert-error" role="alert"><?php echo e($commentError); ?></div>
         <?php endif; ?>
         
         <!-- 评论表单 -->
-        <form method="POST" action="" data-validate class="comment-form" style="margin-bottom: 32px;">
+        <form method="POST" action="" data-validate class="comment-form">
             <?php echo Security::csrfField(); ?>
             <input type="hidden" name="action" value="comment">
             
             <div class="form-row">
-                <div class="form-group" style="margin-bottom: 0;">
-                    <input type="text" name="nickname" class="form-input" placeholder="昵称 *" aria-label="昵称" required
+                <div class="form-group form-group-inline">
+                    <label for="comment-nickname" class="visually-hidden">昵称</label>
+                    <input type="text" id="comment-nickname" name="nickname" class="form-input" placeholder="昵称 *" required
                            value="<?php echo isset($_POST['nickname']) ? e($_POST['nickname']) : e($formNickname); ?>">
                 </div>
-                <div class="form-group" style="margin-bottom: 0;">
-                    <input type="email" name="email" class="form-input" placeholder="邮箱 *" aria-label="邮箱" required
+                <div class="form-group form-group-inline">
+                    <label for="comment-email" class="visually-hidden">邮箱</label>
+                    <input type="email" id="comment-email" name="email" class="form-input" placeholder="邮箱 *" required
                            value="<?php echo isset($_POST['email']) ? e($_POST['email']) : e($formEmail); ?>">
                 </div>
             </div>
             
             <div class="form-group">
-                <input type="url" name="website" class="form-input" placeholder="网站（选填）" aria-label="网站"
+                <label for="comment-website" class="visually-hidden">网站（选填）</label>
+                <input type="url" id="comment-website" name="website" class="form-input" placeholder="网站（选填）"
                        value="<?php echo isset($_POST['website']) ? e($_POST['website']) : ''; ?>">
             </div>
             
             <div class="form-group">
-                <textarea name="content" class="form-textarea" placeholder="写下你的评论..." aria-label="评论内容" required><?php echo isset($_POST['content']) ? e($_POST['content']) : ''; ?></textarea>
+                <label for="comment-content" class="visually-hidden">评论内容</label>
+                <textarea id="comment-content" name="content" class="form-textarea" placeholder="写下你的评论..." required><?php echo isset($_POST['content']) ? e($_POST['content']) : ''; ?></textarea>
             </div>
             
             <button type="submit" class="btn btn-primary">发表评论</button>
@@ -487,7 +520,7 @@ require_once LM_ROOT . '/template/header.php';
             <?php endforeach; ?>
         </div>
         <?php else: ?>
-        <div class="empty-state" style="padding: 40px 20px;">
+        <div class="empty-state empty-state-roomy">
             <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></div>
             <p>暂无评论，来抢沙发吧！</p>
         </div>
@@ -497,7 +530,7 @@ require_once LM_ROOT . '/template/header.php';
 
 <?php require_once LM_ROOT . '/template/bottom-widgets.php'; ?>
 
-<script src="/assets/js/ai-summary.js?v=<?php echo LM_VERSION; ?>"></script>
+<script defer src="/assets/js/ai-summary.js?v=<?php echo LM_VERSION; ?>"></script>
 
 <?php require_once LM_ROOT . '/template/sidebar.php'; ?>
 

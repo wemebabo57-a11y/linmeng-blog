@@ -5,9 +5,10 @@
  *
  * 安全策略：
  * - 域名白名单（防 SSRF，仅允许已知音乐源）
+ * - IP 黑名单（防 SSRF，拒绝私有/保留地址段）
  * - 启用 SSL 证书校验（防中间人）
  * - CORS 仅放行本站 Origin（防滥用）
- * - 仅放行音频/视频内容类型
+ * - 仅放行音频/视频内容类型；application/octet-stream 需经魔数字节嗅探确认
  */
 
 // 防止直接访问
@@ -19,6 +20,85 @@ if (!defined('LM_ROOT')) {
 $configFile = LM_ROOT . '/includes/config.php';
 if (is_file($configFile)) {
     require_once $configFile;
+}
+
+/**
+ * 判断 IP 是否属于私有/保留地址段（防 SSRF）
+ * - 合法公网 IP → 返回 false（允许）
+ * - 合法但私有/保留 → 返回 true（拒绝）
+ * - 非法 IP → 返回 true（保守拒绝）
+ * 另显式拒绝 IPv6 回环 ::1 与 ULA 地址段 fc00::/7
+ */
+function isPrivateIp($ip)
+{
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) {
+        return true; // 非法 IP 视为私有，拒绝
+    }
+    // 显式拒绝 IPv6 回环 ::1
+    if ($ip === '::1') {
+        return true;
+    }
+    // IPv6 唯一本地地址 fc00::/7（首字节以 fc/fd 开头）
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_IPV6) !== false) {
+        $packed = @inet_pton($ip);
+        if ($packed !== false && isset($packed[0])) {
+            $firstByte = ord($packed[0]);
+            if (($firstByte & 0xFE) === 0xFC) {
+                return true;
+            }
+        }
+    }
+    // 公网校验：通过即公网，未通过即私有/保留
+    if (filter_var($ip, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) === false) {
+        return true;
+    }
+    return false;
+}
+
+/**
+ * 通过魔数字节嗅探音频格式
+ * 用于 application/octet-stream 响应体的二次确认
+ * @param string $data 响应体
+ * @return string|null 检测到的 MIME 类型，未匹配返回 null
+ */
+function sniffAudioMagic($data)
+{
+    $len = strlen($data);
+    // ID3 标签（MP3 带 ID3v2 头）
+    if ($len >= 3 && strncmp($data, 'ID3', 3) === 0) {
+        return 'audio/mpeg';
+    }
+    // MPEG 帧同步字节 0xFF 0xFB / 0xF3 / 0xF2
+    if ($len >= 2) {
+        $first = ord($data[0]);
+        $second = ord($data[1]);
+        if ($first === 0xFF && in_array($second, [0xFB, 0xF3, 0xF2], true)) {
+            return 'audio/mpeg';
+        }
+    }
+    // M4A：ftyp box，offset 4 处为 "ftypM4A"
+    if ($len >= 12 && substr($data, 4, 7) === 'ftypM4A') {
+        return 'audio/mp4';
+    }
+    // FLAC
+    if ($len >= 4 && strncmp($data, 'fLaC', 4) === 0) {
+        return 'audio/flac';
+    }
+    // RIFF + WAVE
+    if ($len >= 12 && strncmp($data, 'RIFF', 4) === 0 && substr($data, 8, 4) === 'WAVE') {
+        return 'audio/wav';
+    }
+    // OggS
+    if ($len >= 4 && strncmp($data, 'OggS', 4) === 0) {
+        return 'audio/ogg';
+    }
+    // WebM / Matroska
+    if ($len >= 4
+        && ord($data[0]) === 0x1A && ord($data[1]) === 0x45
+        && ord($data[2]) === 0xDF && ord($data[3]) === 0xA3) {
+        return 'audio/webm';
+    }
+    return null;
 }
 
 // 获取音频 URL
@@ -54,21 +134,62 @@ $allowedHosts = [
     'dl.stream.qqmusic.tc.qq.com',
     'streamoc.music.tc.qq.com',
     'streamoc.music.qq.com',
+    'y.qq.com',
+    'dl.y.qq.com',
     // 酷狗
     'm.kugou.com',
     'trackercdn.kugou.com',
     'fsandroid.kugou.com',
+    'mobi.kugou.com',
+    'webfs.hw.kugou.com',
+    'fs.kugou.com',
+    'mobiles.kugou.com',
+    // 虾米
+    'xiami.com',
+    'www.xiami.com',
+    // 酷我
+    'kuwo.cn',
+    'www.kuwo.cn',
+    'antiserver.kuwo.cn',
+    // Bilibili 音频
+    'audio-qn.jdcdn.com',
 ];
 
-// 允许 126.net / qqmusic.qq.com 子域名兜底
+// 允许已知音频 CDN 的子域名后缀兜底（循环匹配，避免硬编码）
+$allowedSuffixes = [
+    '.music.126.net',  // 网易云
+    '.qqmusic.qq.com', // QQ 音乐
+    '.tc.qq.com',      // 腾讯 CDN
+    '.kugou.com',      // 酷狗
+    '.kuwo.cn',        // 酷我
+    '.xiami.com',      // 虾米
+];
 $hostAllowed = in_array($host, $allowedHosts, true);
-if (!$hostAllowed && (substr($host, -13) === '.music.126.net' || substr($host, -14) === '.qqmusic.qq.com')) {
-    $hostAllowed = true;
+if (!$hostAllowed) {
+    foreach ($allowedSuffixes as $suffix) {
+        if (substr($host, -strlen($suffix)) === $suffix) {
+            $hostAllowed = true;
+            break;
+        }
+    }
 }
 
 if (!$hostAllowed) {
     http_response_code(403);
     die('Domain not allowed');
+}
+
+// SSRF 防护：解析目标域名 IP，拒绝私有/保留地址段
+// 注意：gethostbynamel 仅解析 IPv4 A 记录（足以阻断常见内网回流）
+// DNS 解析失败时不硬拒，仍依赖上方域名白名单保护，避免误伤合法域名
+$resolvedIps = @gethostbynamel($host);
+if (is_array($resolvedIps)) {
+    foreach ($resolvedIps as $resolvedIp) {
+        if (isPrivateIp($resolvedIp)) {
+            http_response_code(403);
+            die('Internal IP not allowed');
+        }
+    }
 }
 
 // 设置请求头
@@ -116,7 +237,10 @@ if (isset($http_response_header) && is_array($http_response_header)) {
 }
 
 // 仅放行音频/视频内容类型，防止代理被用于返回 HTML/脚本等内容
-// 移除 application/octet-stream：过于宽泛，任意二进制均可由此代理外泄
+// 显式拒绝的非媒体类型（不匹配 audio/ video/ application/ogg，且非 octet-stream）：
+//   text/html, text/plain, application/json, application/javascript,
+//   application/xml, application/xhtml+xml, image/*, font/*, text/css 等
+//   —— 以上均会直接返回 415
 $allowedCtPrefixes = ['audio/', 'video/', 'application/ogg'];
 $ctLower = strtolower($contentType);
 $ctOk = false;
@@ -124,6 +248,15 @@ foreach ($allowedCtPrefixes as $prefix) {
     if (strpos($ctLower, $prefix) === 0) {
         $ctOk = true;
         break;
+    }
+}
+// application/octet-stream 过于宽泛，需经魔数字节嗅探确认是否为音频
+// QQ 音乐等 CDN 常以 octet-stream 返回 MP3/M4A/FLAC，嗅探成功后覆写 Content-Type
+if (!$ctOk && $ctLower === 'application/octet-stream') {
+    $detected = sniffAudioMagic($response);
+    if ($detected !== null) {
+        $contentType = $detected;
+        $ctOk = true;
     }
 }
 if (!$ctOk) {

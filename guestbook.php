@@ -9,8 +9,10 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+// 留言板内容是实时互动数据，永不进 CDN 共享缓存，留言后立即可见。
+lm_no_cache_headers();
 
 $pageTitle = '留言板';
 $currentPage = 'guestbook';
@@ -22,36 +24,68 @@ $turnstileSecretKey = getSetting('turnstile_guestbook_secret_key', '') ?: getSet
 // 仅当三项配置齐全时才真正启用
 $turnstileActive = $turnstileGuestbookEnabled && $turnstileSiteKey !== '' && $turnstileSecretKey !== '';
 
-// 获取留言（article_id = 0 表示留言板）
+// 获取留言（article_id = 0 表示留言板）。顶级留言分页，回复一次批量读取。
 $comments = [];
+$totalComments = 0;
+$page = max(1, (int)($_GET['page'] ?? 1));
+$perPage = 20;
+$totalPages = 0;
+
 try {
-    $comments = db()->fetchAll(
-        "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar 
-         FROM lm_comment c 
-         LEFT JOIN lm_admin u ON c.user_id = u.id 
-         WHERE c.article_id = 0 AND c.status = 1 AND c.parent_id = 0 
-         ORDER BY c.created_at DESC"
+    $totalComments = (int)db()->fetchColumn(
+        "SELECT COUNT(*) FROM lm_comment WHERE article_id = 0 AND status = 1 AND parent_id = 0"
     );
-    
-    foreach ($comments as &$comment) {
+    $totalPages = max(1, (int)ceil($totalComments / $perPage));
+    $page = min($page, $totalPages);
+    $offset = ($page - 1) * $perPage;
+
+    $comments = db()->fetchAll(
+        "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar
+         FROM lm_comment c
+         LEFT JOIN lm_admin u ON c.user_id = u.id
+         WHERE c.article_id = 0 AND c.status = 1 AND c.parent_id = 0
+         ORDER BY c.created_at DESC
+         LIMIT ? OFFSET ?",
+        [$perPage, $offset]
+    );
+
+    $commentIds = array_map('intval', array_column($comments, 'id'));
+    $repliesByParent = [];
+    if (!empty($commentIds)) {
+        $placeholders = implode(',', array_fill(0, count($commentIds), '?'));
         $replies = db()->fetchAll(
-            "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar 
-             FROM lm_comment c 
-             LEFT JOIN lm_admin u ON c.user_id = u.id 
-             WHERE c.parent_id = ? AND c.status = 1 
+            "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar
+             FROM lm_comment c
+             LEFT JOIN lm_admin u ON c.user_id = u.id
+             WHERE c.parent_id IN ({$placeholders}) AND c.status = 1
              ORDER BY c.created_at ASC",
-            [$comment['id']]
+            $commentIds
         );
-        $comment['replies'] = $replies;
+        foreach ($replies as $reply) {
+            $repliesByParent[(int)$reply['parent_id']][] = $reply;
+        }
+    }
+
+    foreach ($comments as &$comment) {
+        $comment['replies'] = $repliesByParent[(int)$comment['id']] ?? [];
     }
     unset($comment);
 } catch (Exception $e) {
     $comments = [];
+    $totalComments = 0;
+    $totalPages = 0;
 }
 
 // 处理留言提交
 $commentError = '';
 $commentSuccess = '';
+// PRG 模式：POST 成功后 302 重定向到 GET，刷新/后退不会重复提交。
+// 通过 ?msg= 传递成功提示（ok=直接发布，pending=待审核）。
+if (isset($_GET['msg']) && $_GET['msg'] === 'ok') {
+    $commentSuccess = '留言发表成功';
+} elseif (isset($_GET['msg']) && $_GET['msg'] === 'pending') {
+    $commentSuccess = '留言已提交，等待审核';
+}
 $formUser = isLoggedIn() ? currentUser() : null;
 $formNickname = $formUser ? ($formUser['nickname'] ?: $formUser['username']) : '';
 $formEmail = $formUser ? ($formUser['email'] ?? '') : '';
@@ -96,6 +130,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
         } elseif (strlen($content) > 5000) {
             $commentError = '留言内容太长';
         } else {
+            // 防重复提交：60 秒内同一 IP + 相同内容哈希视为重复（双击/网络重试/F5 都会被挡掉）。
+            // 不依赖前端按钮 disabled——那是 UX，后端这道才是兜底。
+            $ip = Security::getClientIp();
+            // 哈希基于入库前的标准化值（与 insert 写入的 xssClean 结果一致），
+            // 否则 PHP 端哈希与 DB 存储内容不匹配，去重会失效。
+            $normalizedEmail = Security::xssClean($email);
+            $normalizedContent = Security::xssClean($content);
+            $dupeHash = hash('sha256', $ip . '|' . $normalizedEmail . '|' . $normalizedContent);
+            try {
+                $recentDupe = db()->fetchOne(
+                    "SELECT id FROM lm_comment
+                     WHERE ip = ? AND SHA2(CONCAT(ip, '|', email, '|', content), 256) = ?
+                       AND created_at > (NOW() - INTERVAL 60 SECOND)
+                     LIMIT 1",
+                    [$ip, $dupeHash]
+                );
+            } catch (Exception $e) {
+                $recentDupe = false;
+            }
+            if ($recentDupe) {
+                // 静默视为成功（用户感知不到差异），避免暴露去重逻辑
+                $msgParam = getSetting('comment_need_approve', '0') === '1' ? 'pending' : 'ok';
+                // 用相对路径而非 SITE_URL，避免镜像域名/本地测试被跳到主域名
+                header('Location: /guestbook.php?msg=' . $msgParam, true, 303);
+                exit;
+            }
+
             try {
                 $userId = isLoggedIn() ? $_SESSION['user_id'] : 0;
                 $isAdmin = isAdmin() ? 1 : 0;
@@ -108,40 +169,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST' && isset($_POST['action']) && $_POST['
                     'email' => Security::xssClean($email),
                     'website' => $website ? Security::xssClean($website) : null,
                     'content' => Security::xssClean($content),
-                    'ip' => Security::getClientIp(),
+                    'ip' => $ip,
                     'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
                     'status' => getSetting('comment_need_approve', '0') === '1' ? 0 : 1,
                     'is_admin' => $isAdmin
                 ]);
                 
-                $commentSuccess = getSetting('comment_need_approve', '0') === '1' 
-                    ? '留言已提交，等待审核' 
-                    : '留言发表成功';
-                
-                $_POST = [];
-                
-                // 重新加载留言
-                $comments = db()->fetchAll(
-                    "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar 
-                     FROM lm_comment c 
-                     LEFT JOIN lm_admin u ON c.user_id = u.id 
-                     WHERE c.article_id = 0 AND c.status = 1 AND c.parent_id = 0 
-                     ORDER BY c.created_at DESC"
-                );
-                
-                foreach ($comments as &$comment) {
-                    $replies = db()->fetchAll(
-                        "SELECT c.*, u.nickname as user_nickname, u.avatar as user_avatar 
-                         FROM lm_comment c 
-                         LEFT JOIN lm_admin u ON c.user_id = u.id 
-                         WHERE c.parent_id = ? AND c.status = 1 
-                         ORDER BY c.created_at ASC",
-                        [$comment['id']]
-                    );
-                    $comment['replies'] = $replies;
-                }
-                unset($comment);
-                
+                // PRG：提交成功后 303 重定向到 GET，刷新不会重复发留言
+                $msgParam = getSetting('comment_need_approve', '0') === '1' ? 'pending' : 'ok';
+                header('Location: /guestbook.php?msg=' . $msgParam, true, 303);
+                exit;
             } catch (Exception $e) {
                 error_log('Guestbook post failed: ' . $e->getMessage());
                 $commentError = '留言发表失败，请稍后重试';
@@ -208,7 +245,7 @@ require_once LM_ROOT . '/template/header.php';
         <?php endif; ?>
         
         <!-- 留言列表 -->
-        <h3 class="guestbook-count">全部留言 (<?php echo count($comments); ?>)</h3>
+        <h3 class="guestbook-count">全部留言 (<?php echo (int)$totalComments; ?>)</h3>
         
         <?php if (!empty($comments)): ?>
         <div class="comment-list">
@@ -248,6 +285,28 @@ require_once LM_ROOT . '/template/header.php';
             <div class="empty-state-icon"><svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><path d="M7.9 20A9 9 0 1 0 4 16.1L2 22Z"/></svg></div>
             <p>还没有留言，来做第一个留言的人吧！</p>
         </div>
+        <?php endif; ?>
+
+        <?php if ($totalPages > 1): ?>
+        <nav class="pagination" aria-label="留言分页">
+            <?php if ($page > 1): ?>
+            <a href="/guestbook.php?page=<?php echo $page - 1; ?>" class="page-link" rel="prev" aria-label="上一页">&lt;</a>
+            <?php endif; ?>
+            <?php
+            $startPage = max(1, $page - 2);
+            $endPage = min($totalPages, $page + 2);
+            for ($pageNumber = $startPage; $pageNumber <= $endPage; $pageNumber++):
+            ?>
+                <?php if ($pageNumber === $page): ?>
+                <span class="page-link active" aria-current="page"><?php echo $pageNumber; ?></span>
+                <?php else: ?>
+                <a href="/guestbook.php?page=<?php echo $pageNumber; ?>" class="page-link"><?php echo $pageNumber; ?></a>
+                <?php endif; ?>
+            <?php endfor; ?>
+            <?php if ($page < $totalPages): ?>
+            <a href="/guestbook.php?page=<?php echo $page + 1; ?>" class="page-link" rel="next" aria-label="下一页">&gt;</a>
+            <?php endif; ?>
+        </nav>
         <?php endif; ?>
     </div>
 </div>

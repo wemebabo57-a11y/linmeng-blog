@@ -10,8 +10,27 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+
+// 首次访问跳转到指引页
+if (!isset($_COOKIE['lm_guide_seen'])) {
+    $isHttpsGuide = (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+            || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+    setcookie('lm_guide_seen', '1', [
+        'expires' => time() + 365 * 86400,
+        'path' => '/',
+        'domain' => '',
+        'secure' => $isHttpsGuide,
+        'httponly' => true,
+        'samesite' => 'Lax'
+    ]);
+    header('Location: /guide.php', true, 302);
+    exit;
+}
+
+// 匿名访客输出 CDN 可缓存的 Cache-Control（须在上述重定向之后，避免 302 被共享缓存）
+lm_public_cache_headers();
 
 $pageTitle = '首页';
 $currentPage = 'home';
@@ -91,16 +110,44 @@ try {
     }
     $articles = $uniqueArticles;
 
-    // 获取每个文章的前3张图片
+    // 获取文章相关图片和点赞数（批量查询，避免列表页 N+1 请求）
+    $articleIds = array_map('intval', array_column($articles, 'id'));
+    $imagesByArticle = [];
+    $likesByArticle = [];
+    if (!empty($articleIds)) {
+        $placeholders = implode(',', array_fill(0, count($articleIds), '?'));
+        $imageRows = db()->fetchAll(
+            "SELECT article_id, image_url FROM lm_article_image
+             WHERE article_id IN ({$placeholders})
+             ORDER BY sort_order ASC, id ASC",
+            $articleIds
+        );
+        foreach ($imageRows as $imageRow) {
+            $imageArticleId = (int)$imageRow['article_id'];
+            if (!isset($imagesByArticle[$imageArticleId])) {
+                $imagesByArticle[$imageArticleId] = [];
+            }
+            if (count($imagesByArticle[$imageArticleId]) < 3) {
+                $imagesByArticle[$imageArticleId][] = $imageRow;
+            }
+        }
+
+        $likeRows = db()->fetchAll(
+            "SELECT article_id, COUNT(*) AS like_count
+             FROM lm_article_like
+             WHERE article_id IN ({$placeholders})
+             GROUP BY article_id",
+            $articleIds
+        );
+        foreach ($likeRows as $likeRow) {
+            $likesByArticle[(int)$likeRow['article_id']] = (int)$likeRow['like_count'];
+        }
+    }
+
     foreach ($articles as &$article) {
-        $article['images'] = db()->fetchAll(
-            "SELECT image_url FROM lm_article_image WHERE article_id = ? ORDER BY sort_order ASC, id ASC LIMIT 3",
-            [$article['id']]
-        );
-        $article['like_count'] = db()->fetchColumn(
-            "SELECT COUNT(*) FROM lm_article_like WHERE article_id = ?",
-            [$article['id']]
-        );
+        $articleId = (int)$article['id'];
+        $article['images'] = $imagesByArticle[$articleId] ?? [];
+        $article['like_count'] = $likesByArticle[$articleId] ?? 0;
     }
     unset($article);
 
@@ -156,10 +203,10 @@ require_once LM_ROOT . '/template/header.php';
             <button type="button" class="btn btn-hero" data-open-search>搜索内容</button>
         </div>
     </div>
-    <div class="home-hero-panel" aria-label="站点概览">
+    <div class="home-hero-panel home-hero-summary" aria-label="站点概览">
         <div class="hero-stat-card">
             <span><?php echo (int)$totalArticles; ?></span>
-            <small>文章</small>
+            <small><?php echo ($search || $categoryId > 0) ? '匹配文章' : '文章'; ?></small>
         </div>
         <div class="hero-stat-card">
             <span><?php echo (int)getCommentCount(); ?></span>
@@ -173,10 +220,11 @@ require_once LM_ROOT . '/template/header.php';
 </section>
 
 <!-- 搜索和筛选 -->
-<div class="card" style="margin-bottom: 20px;">
+<div class="card home-filter-card">
     <div class="card-body">
-        <form method="GET" action="" class="search-box" style="margin-bottom: 0;">
-            <input type="text" name="search" class="form-input" placeholder="搜索文章..." value="<?php echo e($search); ?>">
+        <form method="GET" action="" class="search-box home-search-bar">
+            <label for="home-search-input" class="visually-hidden">搜索文章</label>
+            <input type="text" id="home-search-input" name="search" class="form-input" placeholder="搜索文章..." value="<?php echo e($search); ?>" autocomplete="off">
             <input type="hidden" name="sort" value="<?php echo e($sort); ?>">
             <?php if ($categoryId > 0): ?>
             <input type="hidden" name="category" value="<?php echo (int)$categoryId; ?>">
@@ -189,19 +237,25 @@ require_once LM_ROOT . '/template/header.php';
 
         <div class="home-filter-row">
             <?php if (!empty($categories)): ?>
-            <div class="category-filter" style="margin-bottom: 0; margin-top: 12px;">
-                <a href="<?php echo e($makeHomeUrl(['category' => null, 'page' => null])); ?>" class="<?php echo $categoryId === 0 ? 'active' : ''; ?>">全部</a>
-                <?php foreach ($categories as $cat): ?>
-                <a href="<?php echo e($makeHomeUrl(['category' => (int)$cat['id'], 'page' => null])); ?>" class="<?php echo $categoryId === (int)$cat['id'] ? 'active' : ''; ?>">
-                    <?php echo e($cat['name']); ?>
-                </a>
-                <?php endforeach; ?>
+            <div class="home-filter-group">
+                <span class="home-filter-label">分类</span>
+                <div class="category-filter" aria-label="按分类筛选">
+                    <a href="<?php echo e($makeHomeUrl(['category' => null, 'page' => null])); ?>" class="<?php echo $categoryId === 0 ? 'active' : ''; ?>"<?php echo $categoryId === 0 ? ' aria-current="page"' : ''; ?>>全部</a>
+                    <?php foreach ($categories as $cat): ?>
+                    <a href="<?php echo e($makeHomeUrl(['category' => (int)$cat['id'], 'page' => null])); ?>" class="<?php echo $categoryId === (int)$cat['id'] ? 'active' : ''; ?>"<?php echo $categoryId === (int)$cat['id'] ? ' aria-current="page"' : ''; ?>>
+                        <?php echo e($cat['name']); ?>
+                    </a>
+                    <?php endforeach; ?>
+                </div>
             </div>
             <?php endif; ?>
-            <div class="category-filter home-sort-filter" style="margin-bottom: 0; margin-top: 12px;">
-                <a href="<?php echo e($makeHomeUrl(['sort' => 'latest', 'page' => null])); ?>" class="<?php echo $sort === 'latest' ? 'active' : ''; ?>">最新</a>
-                <a href="<?php echo e($makeHomeUrl(['sort' => 'hot', 'page' => null])); ?>" class="<?php echo $sort === 'hot' ? 'active' : ''; ?>">热门</a>
-                <a href="<?php echo e($makeHomeUrl(['sort' => 'top', 'page' => null])); ?>" class="<?php echo $sort === 'top' ? 'active' : ''; ?>">置顶</a>
+            <div class="home-filter-group home-sort-group">
+                <span class="home-filter-label">排序</span>
+                <div class="category-filter home-sort-filter" aria-label="排序方式">
+                    <a href="<?php echo e($makeHomeUrl(['sort' => 'latest', 'page' => null])); ?>" class="<?php echo $sort === 'latest' ? 'active' : ''; ?>"<?php echo $sort === 'latest' ? ' aria-current="page"' : ''; ?>>最新</a>
+                    <a href="<?php echo e($makeHomeUrl(['sort' => 'hot', 'page' => null])); ?>" class="<?php echo $sort === 'hot' ? 'active' : ''; ?>"<?php echo $sort === 'hot' ? ' aria-current="page"' : ''; ?>>热门</a>
+                    <a href="<?php echo e($makeHomeUrl(['sort' => 'top', 'page' => null])); ?>" class="<?php echo $sort === 'top' ? 'active' : ''; ?>"<?php echo $sort === 'top' ? ' aria-current="page"' : ''; ?>>置顶</a>
+                </div>
             </div>
         </div>
     </div>
@@ -218,22 +272,15 @@ require_once LM_ROOT . '/template/header.php';
     </div>
     <?php if (!empty($articles)): ?>
         <?php foreach ($articles as $article): ?>
-        <article class="article-item fade-in">
-            <?php if ($article['cover_image']): ?>
+        <article class="article-item">
+            <?php if (!empty($article['cover_image'])): ?>
             <a href="/article.php?slug=<?php echo e($article['slug']); ?>">
-                <img src="<?php echo e($article['cover_image']); ?>" alt="<?php echo e($article['title']); ?>" class="article-cover" loading="lazy">
+                <img src="<?php echo e($article['cover_image']); ?>" alt="<?php echo e($article['title']); ?>" class="article-cover" loading="lazy" decoding="async" width="800" height="450">
             </a>
-            <?php endif; ?>
-
-            <!-- 文章缩略图画廊 -->
-            <?php if (!empty($article['images'])): ?>
-            <div class="article-gallery" style="margin-bottom: 16px;">
-                <?php foreach ($article['images'] as $img): ?>
-                <div class="article-gallery-item" style="aspect-ratio: 16/9;">
-                    <img src="<?php echo e($img['image_url']); ?>" alt="" loading="lazy">
-                </div>
-                <?php endforeach; ?>
-            </div>
+            <?php elseif (!empty($article['images'][0]['image_url'])): ?>
+            <a href="/article.php?slug=<?php echo e($article['slug']); ?>">
+                <img src="<?php echo e($article['images'][0]['image_url']); ?>" alt="<?php echo e($article['title']); ?>" class="article-cover" loading="lazy" decoding="async" width="800" height="450">
+            </a>
             <?php endif; ?>
 
             <h2 class="article-title">
@@ -246,15 +293,11 @@ require_once LM_ROOT . '/template/header.php';
             </h2>
 
             <div class="article-meta">
-                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="4" rx="2" ry="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg> <?php echo timeAgo($article['created_at']); ?></span>
+                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="18" height="18" x="3" y="4" rx="2"/><line x1="16" x2="16" y1="2" y2="6"/><line x1="8" x2="8" y1="2" y2="6"/><line x1="3" x2="21" y1="10" y2="10"/></svg> <?php echo timeAgo($article['created_at']); ?></span>
                 <?php if ($article['category_name']): ?>
-                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg> <?php echo e($article['category_name']); ?></span>
+                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg> <?php echo e($article['category_name']); ?></span>
                 <?php endif; ?>
-                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> <?php echo $article['views']; ?> 阅读</span>
-                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg> <?php echo $article['like_count']; ?> 点赞</span>
-                <?php if ($article['author_name']): ?>
-                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> <?php echo e($article['author_name']); ?></span>
-                <?php endif; ?>
+                <span class="meta-item"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg> <?php echo $article['views']; ?> 阅读</span>
             </div>
 
             <div class="article-excerpt">
@@ -267,8 +310,12 @@ require_once LM_ROOT . '/template/header.php';
 
             <?php if ($article['tags']): ?>
             <div class="article-tags">
-                <?php foreach (explode(',', $article['tags']) as $tag): ?>
-                <span class="tag"><?php echo e(trim($tag)); ?></span>
+                <?php foreach (explode(',', $article['tags']) as $tagIndex => $tag): ?>
+                    <?php if ($tagIndex >= 2) break; ?>
+                    <?php $tag = trim($tag); ?>
+                    <?php if ($tag !== ''): ?>
+                    <a href="/?search=<?php echo urlencode($tag); ?>" class="tag"><?php echo e($tag); ?></a>
+                    <?php endif; ?>
                 <?php endforeach; ?>
             </div>
             <?php endif; ?>
@@ -277,14 +324,14 @@ require_once LM_ROOT . '/template/header.php';
 
         <!-- 展开查看全部按钮 -->
         <?php if ($showViewAllBtn): ?>
-        <div style="text-align: center; padding: 20px 0 8px;">
+        <div class="article-list-footer-actions">
             <a href="?all=1&sort=<?php echo e($sort); ?>" class="btn btn-primary" id="view-all-btn">展开查看全部 <?php echo (int)$totalArticles; ?> 篇文章</a>
         </div>
         <?php endif; ?>
 
         <!-- 收起按钮 -->
         <?php if ($showAll && !$search && $categoryId == 0): ?>
-        <div style="text-align: center; padding: 20px 0 8px;">
+        <div class="article-list-footer-actions">
             <a href="/?sort=<?php echo e($sort); ?>" class="btn btn-secondary">收起</a>
         </div>
         <?php endif; ?>

@@ -30,10 +30,22 @@ $githubClientId = getSetting('github_client_id', '');
 $githubClientSecret = getSetting('github_client_secret', '');
 $githubLoginEnabled = $githubEnabled && !empty($githubClientId) && !empty($githubClientSecret);
 
-// 显示 GitHub OAuth 错误
+// 读取 GitCode 登录配置
+$gitcodeEnabled = (getSetting('gitcode_oauth_enabled', '0') === '1');
+$gitcodeClientId = getSetting('gitcode_client_id', '');
+$gitcodeClientSecret = getSetting('gitcode_client_secret', '');
+$gitcodeLoginEnabled = $gitcodeEnabled && !empty($gitcodeClientId) && !empty($gitcodeClientSecret);
+
+// 是否显示任一第三方登录入口
+$oauthLoginEnabled = $githubLoginEnabled || $gitcodeLoginEnabled;
+
+// 显示 GitHub / GitCode OAuth 错误
 if (!empty($_SESSION['github_oauth_error'])) {
     $error = $_SESSION['github_oauth_error'];
     unset($_SESSION['github_oauth_error']);
+} elseif (!empty($_SESSION['gitcode_oauth_error'])) {
+    $error = $_SESSION['gitcode_oauth_error'];
+    unset($_SESSION['gitcode_oauth_error']);
 }
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -57,7 +69,16 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
         if ($error === '') {
             $username = trim($_POST['username'] ?? '');
-            $password = $_POST['password'] ?? '';
+            // 优先使用 base64url 编码的密码字段（绕过服务器 WAF 对密码中特殊字符的拦截，避免 HTTP 444）
+            $encPassword = $_POST['enc_password'] ?? '';
+            if ($encPassword !== '') {
+                // base64url 还原为标准 base64 再解码
+                $decoded = base64_decode(strtr($encPassword, '-_', '+/'), true);
+                $password = $decoded !== false ? $decoded : ($_POST['password'] ?? '');
+            } else {
+                // 回退：未启用 JS 或编码失败时使用原始字段
+                $password = $_POST['password'] ?? '';
+            }
             $remember = isset($_POST['remember']);
             
             if (empty($username) || empty($password)) {
@@ -181,11 +202,20 @@ $pageTitle = '登录';
             <div class="alert alert-error" style="margin-bottom: 20px;"><?php echo e($error); ?></div>
             <?php endif; ?>
             
+            <?php if ($oauthLoginEnabled): ?>
             <?php if ($githubLoginEnabled): ?>
-            <a href="<?php echo e(getGithubLoginUrl()); ?>" class="btn" style="width: 100%; background: #24292f; color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 16px;">
+            <a href="<?php echo e(getGithubLoginUrl()); ?>" class="btn" style="width: 100%; background: #24292f; color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;">
                 <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor"><path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/></svg>
                 使用 GitHub 登录
             </a>
+            <?php endif; ?>
+
+            <?php if ($gitcodeLoginEnabled): ?>
+            <a href="<?php echo e(getGitcodeLoginUrl()); ?>" class="btn" style="width: 100%; background: #fc5531; color: #fff; display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 12px;">
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+                使用 GitCode 登录
+            </a>
+            <?php endif; ?>
 
             <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 16px; color: var(--text-light); font-size: 0.875rem;">
                 <span style="flex: 1; height: 1px; background: var(--border-color);"></span>
@@ -203,8 +233,10 @@ $pageTitle = '登录';
                 </div>
                 
                 <div class="form-group">
-                    <label class="form-label">密码</label>
-                    <input type="password" name="password" class="form-input" placeholder="请输入密码" required>
+                    <label class="form-label" for="password">密码</label>
+                    <input type="password" name="password" id="password" class="form-input" placeholder="请输入密码" required autocomplete="current-password">
+                    <!-- base64url 编码后的密码载体，由 JS 填充，绕过 WAF 对原始密码中特殊字符的拦截 -->
+                    <input type="hidden" name="enc_password" id="enc_password" value="">
                 </div>
                 
                 <div class="form-group" style="display: flex; align-items: center; gap: 8px;">
@@ -222,12 +254,46 @@ $pageTitle = '登录';
             </form>
             
             <div style="text-align: center; margin-top: 24px; color: var(--text-light); font-size: 0.875rem;">
-                <p>没有 GitHub？<a href="/register.php">申请注册</a></p>
+                <p>没有账号？<a href="/register.php">申请注册</a></p>
                 <p style="margin-top: 8px;"><a href="/">← 返回首页</a></p>
             </div>
         </div>
     </div>
     
-    <script src="/assets/js/main.js?v=<?php echo LM_VERSION; ?>"></script>
+    <script defer src="/assets/js/main.js?v=<?php echo LM_VERSION; ?>"></script>
+    <script>
+    // 登录表单提交时对密码进行 base64url 编码传输，避免密码中的特殊字符
+    // （如 ' " < > or select 等）触发服务器 WAF 拦截导致 HTTP 444
+    (function() {
+        var form = document.querySelector('form[data-validate]');
+        if (!form) return;
+        form.addEventListener('submit', function() {
+            var pwd = form.querySelector('input[name="password"]');
+            var enc = form.querySelector('#enc_password');
+            if (!pwd || !enc || !window.TextEncoder || !window.btoa) return;
+            // 密码为空时不处理，交给浏览器 required 验证
+            if (!pwd.value) return;
+            // 先检查所有 required 字段是否已填写，避免验证失败时禁用密码字段导致用户无法重新输入
+            var requiredFields = form.querySelectorAll('[required]');
+            for (var i = 0; i < requiredFields.length; i++) {
+                if (!requiredFields[i].value.trim()) return;
+            }
+            try {
+                // 使用 TextEncoder 保证 UTF-8 多字节字符正确编码
+                var bytes = new TextEncoder().encode(pwd.value);
+                var binary = '';
+                for (var j = 0; j < bytes.length; j++) {
+                    binary += String.fromCharCode(bytes[j]);
+                }
+                // 转为 base64url（+ -> -，/ -> _，去掉 = 填充），避免 + / = 触发其他 WAF 规则
+                enc.value = btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+                // 禁用原密码字段，使其不再随表单提交（WAF 看不到原始密码）
+                pwd.disabled = true;
+            } catch (e) {
+                // 编码失败时回退到原始提交方式
+            }
+        });
+    })();
+    </script>
 </body>
 </html>

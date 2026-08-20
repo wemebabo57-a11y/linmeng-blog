@@ -11,8 +11,9 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+lm_public_cache_headers();
 
 $pageTitle = '在线工具';
 $currentPage = 'tools';
@@ -162,6 +163,6 @@ require_once LM_ROOT . '/template/header.php';
     <?php endif; ?>
 </div>
 
-<script src="/assets/js/tools.js?v=<?php echo LM_VERSION; ?>"></script>
+<script defer src="/assets/js/tools.js?v=<?php echo LM_VERSION; ?>"></script>
 
 <?php require_once LM_ROOT . '/template/sidebar.php'; ?>

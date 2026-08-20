@@ -10,8 +10,9 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+lm_public_cache_headers();
 
 $pageTitle = '友链';
 $currentPage = 'links';
@@ -27,7 +28,7 @@ require_once LM_ROOT . '/template/header.php';
 <!-- Hero 区域 -->
 <div class="card links-hero">
     <h1 class="links-hero-title">Friends</h1>
-    <p class="links-hero-subtitle">这里汇聚了一群有趣的灵魂，按 Ctrl/⌘ + K 可快速搜索</p>
+    <p class="links-hero-subtitle">按 Ctrl/⌘ + K 可快速搜索</p>
     <div class="links-stats">
         <div class="links-stat">
             <div class="links-stat-value" id="links-count"><?php echo count($links); ?></div>
@@ -60,7 +61,7 @@ require_once LM_ROOT . '/template/header.php';
            data-keywords="<?php echo e(strtolower($link['name'] . ' ' . ($link['description'] ?? '') . ' ' . $link['url'])); ?>"
            style="animation-delay: <?php echo min($index * 0.03, 0.5); ?>s;">
             <?php if (!empty($link['logo'])): ?>
-            <img src="<?php echo e($link['logo']); ?>" alt="" class="link-card-avatar" loading="lazy">
+                <img src="<?php echo e($link['logo']); ?>" alt="<?php echo e($link['name']); ?>头像" class="link-card-avatar" loading="lazy" decoding="async" width="52" height="52">
             <?php else: ?>
             <div class="link-card-avatar link-card-avatar-placeholder">
                 <?php echo mb_substr($link['name'], 0, 1); ?>

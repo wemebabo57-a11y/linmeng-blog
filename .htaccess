@@ -1,0 +1,40 @@
+# Apache 兼容兜底（当前生产环境为 Nginx，保留以便迁移）
+# Nginx 下此文件不会被读取，无副作用
+
+Options -Indexes -ExecCGI -Includes
+ServerSignature Off
+
+# 拒绝点文件
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+# 拒绝敏感扩展名
+<FilesMatch "\.(env|md|log|ini|sh|sqlite|db)$">
+    Require all denied
+</FilesMatch>
+
+# 保护核心目录
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteRule ^includes/ - [F,L]
+    RewriteRule ^storage/ - [F,L]
+    RewriteRule ^docs/ - [F,L]
+    RewriteRule ^\.trae/ - [F,L]
+    RewriteRule ^assets/uploads/.*\.(php|phtml|pl|py|sh|cgi)$ - [F,L]
+</IfModule>
+
+# 安全头（兜底）
+<IfModule mod_headers.c>
+    Header always set X-Frame-Options "DENY"
+    Header always set X-Content-Type-Options "nosniff"
+    Header always set Referrer-Policy "strict-origin-when-cross-origin"
+    Header always set Permissions-Policy "camera=(), microphone=(), geolocation=()"
+    # HSTS 仅 HTTPS 生效
+    Header always set Strict-Transport-Security "max-age=31536000; includeSubDomains; preload" env=HTTPS
+</IfModule>
+
+# 错误页
+ErrorDocument 403 /403.php
+ErrorDocument 404 /404.php
+ErrorDocument 500 /50x.html

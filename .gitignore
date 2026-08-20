@@ -1,0 +1,41 @@
+# 敏感凭据（永远不要提交）
+.env
+.env.bak
+.env.local
+.user.ini
+
+# 安装标记（由 setup 向导生成）
+/includes/config_installed.php
+
+# 用户上传内容
+/assets/uploads/*
+!/assets/uploads/index.html
+
+# 运行时生成的 Markdown 文章源文件（保留 .gitkeep 占位）
+/includes/articles/*
+!/includes/articles/.gitkeep
+
+# AI 摘要缓存（保留 .gitkeep 占位）
+/includes/cache/**
+!/includes/cache/**/
+!/includes/cache/**/.gitkeep
+
+# 日志
+*.log
+/logs/
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 构建产物（若未来引入构建工具）
+/node_modules/
+/dist/
+/build/
+
+# 本地工作产物目录
+/.trae/

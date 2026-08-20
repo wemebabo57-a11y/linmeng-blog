@@ -1,275 +1,294 @@
-# 林梦博客 (KSLinMeng Blog)
+# 林梦博客 · LinMeng Blog
 
-> 一个功能完善、安全可靠的 PHP 个人博客系统——记录生活，分享技术。
+> 一个现代化、注重安全与性能的 PHP 个人博客系统。自带可视化安装向导，访问 `/setup` 三分钟即可上线。
 
-[![PHP](https://img.shields.io/badge/PHP-8.0+-8892BF?logo=php)](https://www.php.net/)
-[![MySQL](https://img.shields.io/badge/MySQL-5.7+-4479A1?logo=mysql)](https://www.mysql.com/)
-[![License](https://img.shields.io/badge/License-MIT-4C1?style=flat-square)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-2.2.2-blue?style=flat-square)]()
+![License](https://img.shields.io/badge/License-MIT-blue)
+![PHP](https://img.shields.io/badge/PHP-%E2%89%A57.4-777bb4)
+![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479a1)
+![NoFramework](https://img.shields.io/badge/Framework-原生PHP-4f46e1)
 
 ---
 
-## ✨ 特性概览
+## 📖 项目简介
 
-| 模块 | 说明 |
+林梦博客是一个基于原生 PHP + MySQL 的轻量博客系统，不依赖任何框架，部署简单、运行高效。它内置了文章管理、评论留言、友链、相册、服务状态监控、AI 文章摘要、GitHub 图床、多平台 OAuth 登录等丰富功能，并具备完善的 CSRF / XSS / 限流 / 登录锁定等安全机制。
+
+**亮点：自带头部less 可视化安装向导** —— 上传代码后访问 `你的域名/setup/`，按提示配置数据库与管理员账号即可完成安装，无需手动导入 SQL、无需手动写配置文件。
+
+---
+
+## ✨ 功能特性
+
+### 内容
+- 📝 文章管理：Markdown / HTML 双模式、封面、摘要、标签、分类、置顶、草稿、图集
+- 💬 评论与留言板：楼中楼回复、审核机制、敏感词过滤
+- 🏷 标签云、分类归档、时间轴归档
+- 📡 RSS 订阅、站点地图友好
+
+### 社交与用户
+- 👤 用户系统：注册（需审核）/ 登录 / 资料编辑 / 头像上传
+- 🔗 友情链接 + 友链自助申请（需审核）
+- 🤝 GitHub / Gitee / GitCode 三平台 OAuth 登录
+- 🖼 相册：基于 GitHub 仓库的图床，自动转 jsDelivr CDN
+
+### 工具与增强
+- 🤖 AI 文章摘要（兼容 OpenAI / 自定义接口，支持多 Provider）
+- 📊 服务状态监控（TCP/HTTP 探测、定时任务、历史日志）
+- 🌤 天气挂件、一言（Hitokoto）、音乐播放器
+- 🛠 工具页（蓝奏云解析等）
+- 🎮 小游戏模块
+- 💰 赞助 / 捐赠页
+
+### 安全与性能
+- 🔒 CSRF 令牌、XSS 过滤、SQL 预处理、上传图片重处理
+- ⏱ 通用限流、登录失败锁定、登录日志
+- 📦 AES-256-CBC 加密存储 API Key 等敏感配置
+- ⚡ 静态资源长缓存、按页面分级的 CDN 缓存策略（Cloudflare 友好）
+- 🎨 粒子背景、星空背景、深色模式、响应式布局
+
+---
+
+## 🛠 技术栈
+
+| 类别 | 技术 |
 |------|------|
-| 📝 文章管理 | 富文本编辑器、分类标签、置顶/推荐、搜索过滤、全文检索 |
-| 💬 评论系统 | 盖楼回复、验证码防护、XSS/CSRF 双重过滤 |
-| 👤 用户体系 | 注册/登录、个人资料、密码加密(bcrypt cost=12)、暴力破解防护 |
-| 🖼️ 相册画廊 | 图片上传与重新处理、WebP 优化、懒加载、灯箱预览 |
-| 🔗 友链管理 | 友链展示与申请、排序管理 |
-| 🤖 AI 辅助 | 多 AI 提供商接入、文章智能摘要、摘要缓存 |
-| 🎵 音乐功能 | 音乐播放器、代理服务、粒子动效背景 |
-| 🌤️ 小部件 | 一言(Hitokoto)、天气组件、星空/粒子背景 |
-| 🛡️ 安全防护 | SQL 注入防护、XSS 过滤、CSRF Token、安全响应头 |
-| 📊 访问统计 | 访问量记录、访客日志 |
-| 🎨 主题切换 | 深色/浅色主题、CSS 变量驱动、流畅过渡动画 |
-| 📱 响应式 | 全端适配，移动端 sidebar 可折叠 |
+| 后端 | 原生 PHP ≥ 7.4（无框架） |
+| 数据库 | MySQL 5.7+ / MariaDB 10.3+，utf8mb4 |
+| 前端 | 原生 HTML/CSS/JS，自研设计系统 |
+| 加密 | OpenSSL AES-256-CBC |
+| 部署 | Nginx 推荐，兼容 Apache |
 
 ---
 
-## 🏗️ 技术架构
+## 📦 环境要求
+
+- **PHP** ≥ 7.4（推荐 8.0+）
+  - 必需扩展：`pdo_mysql`、`openssl`、`mbstring`、`ctype`、`json`
+- **MySQL** ≥ 5.7 或 **MariaDB** ≥ 10.3
+- **Web 服务器**：Nginx（推荐）或 Apache
+- 目录权限：项目根目录、`includes/`、`assets/uploads/` 需可写（用于生成 `.env`、安装标记、上传文件）
+
+---
+
+## 🚀 快速安装（推荐）
+
+### 1. 获取代码
+
+```bash
+git clone https://github.com/你的用户名/linmeng-blog.git
+# 或直接下载 ZIP 上传到服务器
+```
+
+将代码上传到网站根目录。
+
+### 2. 运行安装向导
+
+浏览器访问：
 
 ```
-kslinmeng.cn/
-├── admin/                    # 后台管理面板
-│   ├── articles.php          #    文章管理
-│   ├── article-edit.php      #    文章编辑
-│   ├── categories.php        #    分类管理
-│   ├── comments.php          #    评论管理
-│   ├── gallery.php           #    相册管理
-│   ├── links.php             #    友链管理
-│   ├── users.php             #    用户管理
-│   ├── settings.php          #    站点设置
-│   ├── sponsors.php          #    赞助管理
-│   ├── services.php          #    服务管理
-│   ├── link-apply.php        #    友链申请管理
-│   └── ai-summary.php        #    AI 摘要管理
-├── api/                      # API 接口
-│   ├── ai-summary.php        #    AI 文章摘要
-│   ├── comment-reply.php     #    评论回复
-│   ├── like.php              #    文章点赞
-│   ├── visit.php             #    访问量统计
-│   ├── github-upload.php     #    GitHub 图片上传
-│   ├── hitokoto.php          #    一言接口
-│   ├── lanzou-parse.php      #    蓝奏云解析
-│   └── service-probe.php     #    服务探测
-├── includes/                 # 核心组件
-│   ├── config.php            #    配置文件 (.env 驱动)
-│   ├── Database.php          #    PDO 数据库封装
-│   ├── Security.php          #    安全核心类
-│   ├── functions.php         #    公共函数库
-│   ├── AiProvider.php        #    AI 提供商管理
-│   └── ai-providers.php      #    AI 配置管理
-├── assets/                   # 前端资源
-│   ├── css/
-│   │   ├── style.css         #    主样式表
-│   │   └── design-system.css #    设计系统 (v6.0)
-│   ├── js/
-│   │   ├── main.js           #    主逻辑
-│   │   ├── particles.js      #    粒子背景
-│   │   ├── starfield.js      #    星空背景
-│   │   ├── music-player.js   #    音乐播放器
-│   │   ├── gallery.js        #    相册功能
-│   │   ├── hitokoto.js       #    一言
-│   │   ├── weather-widget.js #    天气组件
-│   │   ├── ai-summary.js     #    AI 摘要
-│   │   └── ui-enhancements.js#    UI 增强
-│   ├── images/               #    静态图片
-│   └── uploads/              #    用户上传 (.gitignore)
-├── template/                 # 页面模板
+http://你的域名/setup/
+```
+
+向导会自动完成 **环境检测**，然后引导你：
+
+1. **配置数据库** —— 填写主机、库名、用户名、密码（可选「数据库不存在时自动创建」）
+2. **设置站点与管理员** —— 站点 URL、站点名称、首个管理员账号密码
+3. **一键安装** —— 自动生成 `.env`、导入数据库结构、创建管理员、写入默认设置
+
+> 安装向导会自动生成 `SECRET_KEY`（用于加密 API Key 等敏感数据）。**该密钥一经设定请勿变更**，否则已加密的数据无法解密。
+
+### 3. 删除安装目录（重要）
+
+安装完成后，向导会提示你删除 `setup/` 目录。请务必删除，防止他人重复执行安装：
+
+```bash
+rm -rf setup/
+```
+
+（向导界面也提供「删除 setup 目录」按钮，一键完成。）
+
+### 4. 登录后台
+
+访问 `你的域名/login.php`，用刚才设置的管理员账号登录，进入 `你的域名/admin/` 开始发表文章与配置站点。
+
+---
+
+## 🔧 手动配置（可选）
+
+如果服务器因权限等原因无法使用安装向导，也可手动配置：
+
+```bash
+cp .env.example .env
+```
+
+编辑 `.env` 填入真实值：
+
+```ini
+DB_HOST=localhost
+DB_NAME=你的库名
+DB_USER=你的用户名
+DB_PASS=你的密码
+SECRET_KEY=                    # 用 php -r "echo bin2hex(random_bytes(32));" 生成
+SITE_URL=https://你的域名
+SITE_PATH=                     # 子目录部署时填写，如 /blog；根目录留空
+LM_TRUST_PROXY=false
+```
+
+然后导入数据库结构：
+
+```bash
+mysql -u 用户名 -p 你的库名 < setup/schema.sql
+```
+
+最后手动创建管理员：参考 `includes/Security.php` 的密码哈希方式，或直接在数据库执行（将 `你的密码哈希` 替换为 `php -r "echo password_hash('你的密码', PASSWORD_DEFAULT);"` 的输出）：
+
+```sql
+INSERT INTO lm_admin (username, password, email, nickname, role, status, created_at)
+VALUES ('admin', '你的密码哈希', 'admin@example.com', 'admin', 'admin', 1, NOW());
+```
+
+并创建安装标记文件 `includes/config_installed.php`（内容可为空 PHP 文件）。
+
+---
+
+## 🗂 目录结构
+
+```
+.
+├── admin/                 # 后台管理
+│   ├── template/           #   后台模板
+│   ├── article-edit.php    #   文章编辑
+│   ├── articles.php        #   文章列表
+│   ├── settings.php        #   站点设置
+│   ├── users.php           #   用户管理
+│   └── ...
+├── api/                    # 前端接口
+│   ├── like.php            #   点赞
+│   ├── visit.php           #   访问统计
+│   ├── ai-summary.php      #   AI 摘要
+│   ├── github-upload.php   #   图床上传
+│   └── ...
+├── assets/                 # 静态资源
+│   ├── css/                #   样式（含 design-system.css）
+│   ├── js/                 #   脚本
+│   ├── images/             #   默认图片
+│   └── uploads/            #   用户上传（运行时生成，已 gitignore）
+├── docs/
+│   └── nginx.example.conf  # Nginx 配置示例
+├── includes/               # 核心库
+│   ├── config.php          #   配置入口（读取 .env）
+│   ├── Database.php        #   PDO 数据库封装
+│   ├── Security.php       #   安全：CSRF/XSS/限流/加密
+│   ├── functions.php       #   公共函数
+│   ├── AiProvider.php      #   AI Provider
+│   └── Markdown.php        #   Markdown 解析
+├── setup/                  # ⭐ 安装向导（安装后删除）
+│   ├── index.php           #   向导主程序
+│   ├── schema.sql          #   数据库结构
+│   ├── style.css           #   向导样式
+│   └── .htaccess           #   保护非 PHP 资源
+├── template/               # 前台模板
 │   ├── header.php
 │   ├── sidebar.php
 │   └── bottom-widgets.php
-├── docs/                     # 文档
-│   └── nginx.example.conf    #    Nginx 配置示例
-├── setup.php                 # 安装向导
-├── index.php                 # 首页
-├── article.php               # 文章详情
-├── gallery.php               # 相册
-├── links.php                 # 友链
-├── guestbook.php             # 留言板
-├── about.php                 # 关于
-├── donate.php                # 赞助
-├── git.php                   # Git
-├── profile.php               # 个人资料
-├── tools.php                 # 工具集
-└── .env.example              #    环境变量模板
+├── .env.example            # 配置模板
+├── .htaccess               # Apache 兼容规则
+├── index.php               # 首页
+├── article.php             # 文章页
+├── login.php / register.php
+├── guestbook.php           # 留言板
+├── gallery.php             # 相册
+├── rss.php                 # RSS
+└── ...                     # 其它页面
 ```
 
 ---
 
-## 📊 数据统计
+## 🌐 Web 服务器配置
 
-| 指标 | 数值 |
-|------|------|
-| PHP 文件 | 57 |
-| 数据库表 | 24 |
-| CSS 代码行数 | ~9,500+ |
-| JS 代码行数 | ~8,300+ |
-| 功能页面 | 20+ |
+### Nginx（推荐）
+
+参考 `docs/nginx.example.conf`，核心要点：
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name 你的域名;
+    root /www/wwwroot/你的站点目录;
+    index index.php;
+
+    # 隐藏敏感文件
+    location ~ /\.(env|git|user\.ini|htaccess) { deny all; return 404; }
+    location ~ ^/includes/  { deny all; return 404; }
+    location ~ ^/(storage|docs)/ { deny all; return 404; }
+
+    # 上传目录禁止执行脚本
+    location ~* /assets/uploads/.*\.(php|phtml|pl|py|sh|cgi)$ { deny all; return 403; }
+
+    # PHP 处理
+    location ~ \.php$ {
+        fastcgi_pass unix:/tmp/php-cgi-80.sock;   # 按实际 PHP 版本调整
+        fastcgi_index index.php;
+        fastcgi_param SCRIPT_FILENAME $document_root$fastcgi_script_name;
+        include fastcgi_params;
+    }
+
+    location / {
+        try_files $uri $uri/ /index.php?$query_string;
+    }
+}
+```
+
+### Apache
+
+项目自带 `.htaccess`，已包含敏感文件拦截、核心目录保护、安全头、错误页等规则，通常无需额外配置（需开启 `mod_rewrite`）。
 
 ---
 
-## 🚀 快速开始
+## 🔒 安全建议
 
-### 环境要求
+1. **安装后立即删除 `setup/` 目录**。
+2. **妥善保管 `SECRET_KEY`**：它用于加密 AI API Key、OAuth Secret 等敏感配置，一旦丢失已加密数据无法恢复。`.env` 已在 `.gitignore` 中，切勿提交到版本库。
+3. 生产环境关闭 PHP 错误显示（`config.php` 默认已关闭 `display_errors`）。
+4. 配置 HTTPS 并开启 HSTS（Nginx 配置示例已含）。
+5. 后台路径 `/admin/` 建议增加 IP 白名单或 Basic Auth 加固。
+6. 定期备份 `assets/uploads/` 与数据库。
 
-- **PHP** >= 8.0 (推荐 8.1+)
-- **MySQL** >= 5.7 (推荐 8.0+)
-- **Nginx** (推荐) / Apache
-- PHP 扩展: `pdo_mysql`, `mbstring`, `gd`, `openssl`
+---
 
-### 安装步骤
+## ⚙️ 后台配置入口
 
-1. **部署代码**
+登录后台 `你的域名/admin/` 后，在 **设置** 中可配置：
+
+- 站点基本信息（名称、描述、关键词、Logo、Favicon、背景图、ICP 备案号）
+- 社交链接（GitHub、Bilibili、Telegram、邮箱 —— 留空则不在页脚显示）
+- 评论审核开关、文章评论开关
+- AI 摘要（Provider、模型、提示词）
+- OAuth 登录（GitHub / Gitee / GitCode 的 Client ID/Secret）
+- 人机验证（Cloudflare Turnstile / GeeTest）
+- 图床（GitHub 仓库、Token、分支）
+- 服务状态监控（探测间隔、密钥）
+- 工具页、蓝奏云解析
+
+---
+
+## 🤝 参与贡献
+
+欢迎提交 Issue 与 PR。开发时：
 
 ```bash
-git clone https://github.com/kslinmeng/blog.git
-cd blog
-```
-
-2. **配置 Web 服务器**
-
-将 Nginx 配置示例复制到你的服务器配置目录：
-
-```bash
-cp docs/nginx.example.conf /etc/nginx/conf.d/blog.conf
-```
-
-> 详见 [Nginx 配置示例](docs/nginx.example.conf)
-
-3. **创建数据库**
-
-```sql
-CREATE DATABASE blog CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-```
-
-4. **创建 `.env` 文件**
-
-```env
-DB_HOST=localhost
-DB_NAME=blog
-DB_USER=root
-DB_PASS=your_password
-SITE_URL=https://yourdomain.com
-SITE_PATH=/
-SECRET_KEY=YOUR_RANDOM_SECRET_KEY
-```
-
-5. **运行安装向导**
-
-访问 `https://yourdomain.com/setup.php`，按照向导完成：
-
-- ✅ 环境检测 (PHP 版本 / 扩展 / 目录权限)
-- ✅ 数据库配置与连接测试
-- ✅ 数据表创建 + 默认设置 + 管理员账号
-- ✅ `.env` 文件生成
-
-6. **删除安装文件（推荐）**
-
-```bash
-rm setup.php
+# 克隆并开发
+git clone https://github.com/你的用户名/linmeng-blog.git
+# 修改代码后请确保：
+#   - 不要在代码中硬编码任何密钥 / 密码 / Token
+#   - 敏感配置一律走 .env 或 lm_setting 数据表
+#   - 新增数据表请同步更新 setup/schema.sql
 ```
 
 ---
 
-## 🔐 安全特性
+## 📄 开源协议
 
-本项目在安全方面做了大量工作：
+本项目基于 [MIT License](LICENSE) 开源，可自由使用、修改、分发。
 
-| 防护措施 | 实现方式 |
-|----------|----------|
-| SQL 注入防护 | PDO 预处理语句 + 参数绑定 |
-| XSS 过滤 | `htmlspecialchars` + 输出编码 |
-| CSRF 防护 | 动态 Token + `hash_equals` 校验 |
-| 密码安全 | bcrypt (cost=12) + 强度校验 |
-| 暴力破解防护 | 登录次数限制 + 锁定时长 |
-| 文件上传安全 | 类型白名单 + 图片重处理 + 禁止执行 |
-| 敏感文件保护 | `.env` / `/includes/` / `/docs/` Nginx 拦截 |
-| 安全响应头 | HSTS / CSP / X-Frame-Options / nosniff 等 |
-| 会话安全 | HttpOnly + Secure + SameSite |
-
----
-
-## 🗄️ 数据库表说明
-
-| 表名 | 说明 |
-|------|------|
-| `lm_admin` | 管理员账号 |
-| `lm_article` | 文章 |
-| `lm_article_image` | 文章图片关联 |
-| `lm_article_like` | 文章点赞 |
-| `lm_category` | 文章分类 |
-| `lm_comment` | 评论 |
-| `lm_gallery` | 相册 |
-| `lm_link` | 友链 |
-| `lm_link_apply` | 友链申请 |
-| `lm_sponsor` | 赞助商 |
-| `lm_service` | 服务信息 |
-| `lm_service_log` | 服务探测日志 |
-| `lm_setting` | 站点设置 |
-| `lm_ai_provider` | AI 提供商配置 |
-| `lm_ai_summary_cache` | AI 摘要缓存 |
-| `lm_visit_log` | 访问日志 |
-| `lm_user_apply` | 用户申请 |
-| `lm_login_log` | 登录日志 |
-| `lm_login_lock` | 登录锁定记录 |
-| `lm_rate_limit` | 速率限制 |
-
----
-
-## 📝 开发指南
-
-### 项目结构说明
-
-- **`includes/`** — 核心类库与配置，所有入口文件统一从这里加载
-- **`admin/`** — 后台管理模块，需登录访问
-- **`api/`** — 前后端分离的 API 端点
-- **`assets/`** — 静态资源，按 CSS / JS / images / uploads 分类
-
-### 设计系统
-
-本项目采用 **Design System v6.0**，涵盖：
-
-- CSS 变量驱动的深色/浅色主题
-- 统一的卡片、按钮、表单风格
-- 响应式断点系统
-- 微交互动画
-- 无障碍 (a11y) 焦点状态
-
----
-
-## 🤝 贡献指南
-
-欢迎提交 Issue 和 Pull Request！
-
-1. Fork 本仓库
-2. 创建特性分支 (`git checkout -b feature/AmazingFeature`)
-3. 提交更改 (`git commit -m 'Add some AmazingFeature'`)
-4. 推送到分支 (`git push origin feature/AmazingFeature`)
-5. 提交 Pull Request
-
----
-
-## 📜 许可证
-
-本项目采用 [MIT](LICENSE) 许可证开源。
-
----
-
-## 🙏 致谢
-
-- [Hitokoto 一言](https://hitokoto.cn/) — 一言 API
-- 各位 [赞助商](https://kslinmeng.cn/donate.php) 和 [友链](https://kslinmeng.cn/links.php) 伙伴
-- 所有开源项目的贡献者们
-
----
-
-<div align="center">
-
-**Made with ❤️ by [林梦](https://kslinmeng.cn)**
-
-© 2026 KSLinMeng Blog · Version 2.2.2
-
-</div>
+> 如果本项目对你有帮助，欢迎点个 ⭐ Star，或在你的站点给它一个友链 :)

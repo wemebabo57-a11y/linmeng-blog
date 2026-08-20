@@ -11,8 +11,9 @@ require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 require_once LM_ROOT . '/api/service-probe.php'; // 引入 probeService / logServiceProbe
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+lm_public_cache_headers();
 
 $pageTitle = '服务状态';
 $currentPage = 'status';
@@ -37,7 +38,10 @@ $now = time();
 $lastProbeAt = getSetting('service_last_probe_at', '');
 $needProbeAll = (!$lastProbeAt) || (strtotime($lastProbeAt) < $now - $interval * 60);
 
-if ($needProbeAll && !$fetchError && count($services) > 0) {
+// 用户手动点击"刷新状态"时强制重新探测
+$forceProbe = isset($_GET['force']) && $_GET['force'] === '1';
+
+if (($needProbeAll || $forceProbe) && !$fetchError && count($services) > 0) {
     try {
         probeAllServices();
     } catch (Exception $e) {
@@ -278,8 +282,8 @@ require_once LM_ROOT . '/template/header.php';
 
 <script>
 document.getElementById('status-refresh-btn')?.addEventListener('click', function () {
-    // 强制刷新：加随机参数绕过缓存，服务端会重新探测（若超过间隔）
-    window.location.href = window.location.pathname + '?t=' + Date.now();
+    // 强制重新探测并刷新页面
+    window.location.href = window.location.pathname + '?force=1&t=' + Date.now();
 });
 // 按后台设置的探测间隔自动刷新
 setTimeout(function () {

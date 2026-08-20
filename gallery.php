@@ -10,8 +10,9 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 
-session_start();
+lm_session_start();
 Security::setSecurityHeaders();
+lm_public_cache_headers();
 
 $pageTitle = '免费图床';
 $currentPage = 'gallery';
@@ -247,7 +248,7 @@ require_once LM_ROOT . '/template/header.php';
 </style>
 
 <?php if ($isLoggedIn && $isConfigured): ?>
-<script src="/assets/js/gallery.js?v=<?php echo LM_VERSION; ?>"></script>
+<script defer src="/assets/js/gallery.js?v=<?php echo LM_VERSION; ?>"></script>
 <?php endif; ?>
 
 <?php
