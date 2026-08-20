@@ -1,8 +1,11 @@
 # 林梦博客 · LinMeng Blog
 
 > 一个现代化、注重安全与性能的 PHP 个人博客系统。自带可视化安装向导，访问 `/setup` 三分钟即可上线。
+>
+> 🌐 **演示站**：<https://kslinmeng.cn/> ｜ 📦 **源码**：<https://github.com/wemebabo57-a11y/linmeng-blog>
 
 [![GitHub](https://img.shields.io/static/v1?label=GitHub&message=linmeng-blog&color=181717&logo=github)](https://github.com/wemebabo57-a11y/linmeng-blog)
+[![演示站](https://img.shields.io/badge/演示站-kslinmeng.cn-6366f1?logo=googlechrome&logoColor=white)](https://kslinmeng.cn/)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![PHP](https://img.shields.io/badge/PHP-%E2%89%A57.4-777bb4)
 ![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479a1)
@@ -14,7 +17,7 @@
 
 林梦博客是一个基于原生 PHP + MySQL 的轻量博客系统，不依赖任何框架，部署简单、运行高效。它内置了文章管理、评论留言、友链、相册、服务状态监控、AI 文章摘要、GitHub 图床、多平台 OAuth 登录等丰富功能，并具备完善的 CSRF / XSS / 限流 / 登录锁定等安全机制。
 
-**亮点：自带头部less 可视化安装向导** —— 上传代码后访问 `你的域名/setup/`，按提示配置数据库与管理员账号即可完成安装，无需手动导入 SQL、无需手动写配置文件。
+**亮点：自带可视化安装向导** —— 上传代码后访问 `你的域名/setup/`，按提示配置数据库与管理员账号即可完成安装，无需手动导入 SQL、无需手动写配置文件。
 
 ---
 
