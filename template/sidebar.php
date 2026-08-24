@@ -356,7 +356,7 @@ if (!defined('LM_ROOT')) {
                 </div>
             </div>
 
-            <!-- 第三列：社交 + 备案 -->
+            <!-- 第三列：社交与联系 -->
             <div class="footer-meta-col">
                 <div class="footer-nav-title">关注与联系</div>
                 <div class="footer-social-row">
@@ -370,31 +370,15 @@ if (!defined('LM_ROOT')) {
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M17.813 4.653h.854c1.51.054 2.769.578 3.773 1.574 1.004.995 1.524 2.249 1.56 3.76v7.36c-.036 1.51-.556 2.769-1.56 3.773s-2.262 1.524-3.773 1.56H5.333c-1.51-.036-2.769-.556-3.773-1.56S.036 18.858 0 17.347v-7.36c.036-1.511.556-2.765 1.56-3.76 1.004-.996 2.262-1.52 3.773-1.574h.774l-1.174-1.12a1.234 1.234 0 0 1-.373-.906c0-.356.124-.658.373-.907l.027-.027c.267-.249.573-.373.92-.373.347 0 .653.124.92.373L9.653 4.44c.071.071.134.142.187.213h4.267a.836.836 0 0 1 .16-.213l2.853-2.747c.267-.249.573-.373.92-.373.347 0 .662.124.929.373.25.249.383.551.4.907 0 .355-.124.657-.373.906zM5.333 7.24c-.746.018-1.373.276-1.88.773-.506.498-.769 1.13-.786-1.894v7.52c.017.764.28 1.395.786 1.893.507.498 1.134.756 1.88.773h13.334c.746-.017 1.373-.275 1.88-.773.506-.498.769-1.129.786-1.893v-7.52c-.017-.765-.28-1.396-.786-1.894-.507-.497-1.134-.755-1.88-.773zM8 11.107c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373zm8 0c.373 0 .684.124.933.373.25.249.383.569.4.96v1.173c-.017.391-.15.711-.4.96-.249.25-.56.374-.933.374s-.684-.125-.933-.374c-.25-.249-.383-.569-.4-.96V12.44c.017-.391.15-.711.4-.96.249-.249.56-.373.933-.373z"/></svg>
                     </a>
                     <?php endif; ?>
-                    <?php if (getSetting('telegram_url')): ?>
-                    <a href="<?php echo e(getSetting('telegram_url')); ?>" target="_blank" rel="noopener noreferrer" title="Telegram" aria-label="Telegram">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d="M21.94 4.3a1.5 1.5 0 0 0-1.6-.24L3.4 11.2c-1.1.46-1.06 2.03.06 2.43l3.9 1.4 1.5 4.7c.33 1.05 1.7 1.3 2.38.43l2.02-2.6 3.9 2.87c.86.63 2.08.16 2.29-.88l2.7-13.5a1.5 1.5 0 0 0-.21-1.15ZM9.3 14.13l-.02.02-.62 3.06-1.06-3.3 8.53-5.6-6.83 5.82Z"/></svg>
-                    </a>
-                    <?php endif; ?>
-                    <?php if (getSetting('contact_email')): ?>
-                    <a href="mailto:<?php echo e(getSetting('contact_email')); ?>" title="邮箱" aria-label="邮箱">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg>
-                    </a>
-                    <?php endif; ?>
                     <a href="/rss.php" title="RSS 订阅" aria-label="RSS 订阅">
                         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1" fill="currentColor" stroke="none"/></svg>
                     </a>
                 </div>
+                <?php if (getSetting('admin_email')): ?>
                 <div class="footer-contact-list">
-                    <?php if (getSetting('telegram_url')): ?>
-                    <a href="<?php echo e(getSetting('telegram_url')); ?>" target="_blank" rel="noopener noreferrer">Telegram</a>
-                    <?php endif; ?>
-                    <?php if (getSetting('contact_email')): ?>
-                    <a href="mailto:<?php echo e(getSetting('contact_email')); ?>">邮箱：<?php echo e(getSetting('contact_email')); ?></a>
-                    <?php endif; ?>
+                    <a href="mailto:<?php echo e(getSetting('admin_email')); ?>">联系站长</a>
                 </div>
-                <div class="footer-icp">
-                    <a href="https://beian.miit.gov.cn/" target="_blank" rel="noopener"><?php echo e(getSetting('site_icp', '')); ?></a>
-                </div>
+                <?php endif; ?>
             </div>
 
             <!-- 底部栏：版权 + 统计 -->

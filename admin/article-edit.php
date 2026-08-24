@@ -9,6 +9,7 @@ require_once LM_ROOT . '/includes/config.php';
 require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
+require_once LM_ROOT . '/includes/PageCache.php';
 
 session_start();
 requireAdmin();
@@ -315,6 +316,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 ]);
                             }
                         }
+
+                        // 发布/更新会改变前台列表（含置顶状态），清空页面缓存以立即生效
+                        PageCache::purgeAll();
 
                         // PRG模式防止刷新重复提交；新建时带 created=1 标记以便回显时区分提示语
                         $createdFlag = ($success === '文章已发布') ? '&created=1' : '';

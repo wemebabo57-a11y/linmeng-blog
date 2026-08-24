@@ -1,7 +1,7 @@
 <?php
 /**
  * 林梦博客 - 配置文件
- * 由 setup.php 生成
+ * 由 /setup/ 安装向导生成运行配置
  */
 
 // 防止直接访问
@@ -40,30 +40,24 @@ $requiredEnv = static function ($key) use ($envValue) {
     $value = $envValue($key, '');
     if ($value === '') {
         error_log('Missing required configuration: ' . $key);
-        // 未配置时引导到安装向导（若存在），否则提示手动配置
-        if (is_readable(LM_ROOT . '/setup/index.php')) {
-            $path = rtrim($envValue('SITE_PATH', ''), '/') . '/setup/';
-            header('Location: ' . $path, true, 302);
-        } else {
-            echo '网站配置缺失：请访问 域名/setup 运行安装向导，或复制 .env.example 为 .env 并填写真实值。';
-        }
-        exit;
+        die('网站配置缺失，请检查 .env 文件');
     }
     return $value;
 };
 
 // 数据库配置
 define('DB_HOST', $envValue('DB_HOST', 'localhost'));
+define('DB_PORT', (int)$envValue('DB_PORT', '3306'));
 define('DB_NAME', $requiredEnv('DB_NAME'));
 define('DB_USER', $requiredEnv('DB_USER'));
-define('DB_PASS', $requiredEnv('DB_PASS'));
+define('DB_PASS', $envValue('DB_PASS', ''));
 define('DB_CHARSET', 'utf8mb4');
 
 // 网站基础配置
 define('SITE_URL', $envValue('SITE_URL', 'https://example.com'));
 define('SITE_PATH', $envValue('SITE_PATH', ''));
 
-// 安全密钥（AES-256-CBC 加密用，一旦设定后不要变更）
+// 此参数由安装向导在服务器本地生成，不应提交至版本库。
 define('SECRET_KEY', $requiredEnv('SECRET_KEY'));
 define('CSRF_TOKEN_NAME', 'lm_csrf_token');
 

@@ -36,8 +36,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = '请选择要操作的评论';
                         $messageType = 'error';
                     } else {
-                        $idList = implode(',', $ids);
-                        db()->query("UPDATE lm_comment SET status = 1 WHERE id IN ($idList)");
+                        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                        db()->query("UPDATE lm_comment SET status = 1 WHERE id IN ($placeholders)", $ids);
                         $message = '已批准 ' . count($ids) . ' 条评论';
                         $messageType = 'success';
                     }
@@ -48,8 +48,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = '请选择要操作的评论';
                         $messageType = 'error';
                     } else {
-                        $idList = implode(',', $ids);
-                        db()->query("UPDATE lm_comment SET status = 0 WHERE id IN ($idList)");
+                        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                        db()->query("UPDATE lm_comment SET status = 0 WHERE id IN ($placeholders)", $ids);
                         $message = '已拒绝 ' . count($ids) . ' 条评论';
                         $messageType = 'success';
                     }
@@ -60,8 +60,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         $message = '请选择要操作的评论';
                         $messageType = 'error';
                     } else {
-                        $idList = implode(',', $ids);
-                        db()->query("DELETE FROM lm_comment WHERE id IN ($idList)");
+                        $placeholders = implode(',', array_fill(0, count($ids), '?'));
+                        db()->query("DELETE FROM lm_comment WHERE id IN ($placeholders)", $ids);
                         $message = '已删除 ' . count($ids) . ' 条评论';
                         $messageType = 'success';
                     }
@@ -284,7 +284,7 @@ require_once LM_ROOT . '/admin/template/header.php';
         </table>
 
         <?php
-        $urlPattern = '/admin/comments.php?page=%d&status=' . $status;
+        $urlPattern = '/admin/comments.php?page=%d&status=' . urlencode($status);
         echo pagination($page, $totalPages, $urlPattern);
         ?>
     </div>

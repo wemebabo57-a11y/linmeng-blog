@@ -128,23 +128,21 @@ $gitcodeLogin = trim($gitcodeUser['login'] ?? '');
 $gitcodeName = trim($gitcodeUser['name'] ?? '');
 $gitcodeEmail = trim($gitcodeUser['email'] ?? '');
 $gitcodeAvatar = trim($gitcodeUser['avatar_url'] ?? '');
-// GitCode 公开邮箱默认已验证；无公开邮箱时不用于绑定已有账号，仅用于新建账号
-$gitcodeEmailVerified = !empty($gitcodeEmail);
-
+// 安全说明：GitCode 公开邮箱不含"已验证"语义，任何人可设置为他人邮箱，
+// 因此绝不按 email 匹配绑定已有账号（防账号接管）。
+// 已有账号的绑定仅限登录态下由用户本人主动发起。
 try {
     // 尝试查找已绑定的用户
     $user = db()->fetchOne("SELECT * FROM lm_admin WHERE gitcode_id = ?", [$gitcodeId]);
 
-    if (!$user && !empty($gitcodeEmail) && $gitcodeEmailVerified) {
-        // 如果邮箱已存在，允许绑定到同一账号（仅限 GitCode 已验证邮箱）
-        $user = db()->fetchOne("SELECT * FROM lm_admin WHERE email = ?", [$gitcodeEmail]);
-        if ($user) {
-            db()->update('lm_admin', [
-                'gitcode_id' => $gitcodeId,
-                'gitcode_username' => $gitcodeLogin
-            ], 'id = ?', [$user['id']]);
-            $user['gitcode_id'] = $gitcodeId;
-        }
+    if (!$user && isLoggedIn() && (int)($_SESSION['user_id'] ?? 0) > 0) {
+        // 登录态下主动绑定当前账号
+        $bindUid = (int)$_SESSION['user_id'];
+        db()->update('lm_admin', [
+            'gitcode_id' => $gitcodeId,
+            'gitcode_username' => $gitcodeLogin
+        ], 'id = ?', [$bindUid]);
+        $user = db()->fetchOne("SELECT * FROM lm_admin WHERE id = ?", [$bindUid]);
     }
 
     if (!$user) {

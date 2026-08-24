@@ -1,19 +1,21 @@
 <?php
-// 全量探测脚本（定时任务入口）
-//
-// 用法一（推荐，服务器 crontab）：
-//   */5 * * * * php /www/wwwroot/你的站点路径/api/service-probe-all.php
-//   （把路径换成你的实际站点路径；间隔与后台设置的探测间隔一致）
-//
-// 用法二（Web 触发，需带密钥）：
-//   curl "https://你的域名/api/service-probe-all.php?key=后台设置的密钥"
-//   密钥在 后台 > 服务状态 > 探测设置 中配置；留空则禁止 Web 触发。
-//
-// 用法三（后台手动触发）：
-//   后台 > 服务状态 > 探测设置 中点"立即探测"按钮。
-//
-// 说明：无论是否配置 cron，状态页（/status.php）在距上次探测超过
-//       后台设置的间隔时，会自动懒触发一次探测作为兜底。
+/**
+ * 全量探测脚本（定时任务入口）
+ *
+ * 用法一（推荐，服务器 crontab）：
+ *   每 5 分钟执行一次：php /var/www/your-site/api/service-probe-all.php
+ *   （把路径换成你的实际站点路径；间隔与后台设置的探测间隔一致）
+ *
+ * 用法二（Web 触发，需带密钥）：
+ *   curl "https://your-domain.example/api/service-probe-all.php?key=后台设置的访问参数"
+ *   密钥在 后台 > 服务状态 > 探测设置 中配置；留空则禁止 Web 触发。
+ *
+ * 用法三（后台手动触发）：
+ *   后台 > 服务状态 > 探测设置 中点"立即探测"按钮。
+ *
+ * 说明：无论是否配置 cron，状态页（/status.php）在距上次探测超过
+ *       后台设置的间隔时，会自动懒触发一次探测作为兜底。
+ */
 define('LM_ROOT', dirname(__DIR__));
 
 require_once LM_ROOT . '/includes/config.php';

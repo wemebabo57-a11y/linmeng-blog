@@ -20,7 +20,7 @@ if (!isAdmin()) {
 }
 
 error_reporting(E_ALL);
-ini_set('display_errors', '1');
+ini_set('display_errors', '0');
 header('Content-Type: text/plain; charset=utf-8');
 
 echo "===== 图床上传流程测试 =====\n\n";

@@ -69,6 +69,14 @@ try {
 require_once LM_ROOT . '/admin/template/header.php';
 ?>
 
+<div class="card" style="margin-bottom: 24px; border-left: 4px solid var(--primary-color);">
+    <div class="card-body" style="display: grid; gap: 8px;">
+        <div><strong>本站由林梦开发</strong>，已开源仓库地址：<a href="https://github.com/wemebabo57-a11y/linmeng-blog" target="_blank" rel="noopener noreferrer">github.com/wemebabo57-a11y/linmeng-blog</a>。</div>
+        <div>如果你是花钱买的，请立刻退款并向平台举报。</div>
+        <div class="form-hint">服务器推荐：<a href="https://www.rainyun.com/linmeng_" target="_blank" rel="noopener noreferrer">雨云</a>；优惠码 <code>linmeng</code> 可领取 5 折优惠券。</div>
+    </div>
+</div>
+
 <!-- 统计卡片 -->
 <div class="stat-cards">
     <div class="stat-card">

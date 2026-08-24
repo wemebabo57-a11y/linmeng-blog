@@ -65,10 +65,7 @@ $siteDescription = getSetting('site_description', '记录生活，分享技术')
 $siteLogo = rssAbsoluteUrl(getSetting('site_logo', ''));
 $siteKeywords = array_filter(array_map('trim', explode(',', (string)getSetting('site_keywords', ''))));
 
-$copyright = trim((string)getSetting('site_icp', ''));
-if ($copyright === '') {
-    $copyright = trim(preg_replace('/\s+/u', ' ', strip_tags((string)getSetting('site_footer', ''))));
-}
+$copyright = trim(preg_replace('/\s+/u', ' ', strip_tags((string)getSetting('site_footer', ''))));
 
 try {
     $articles = db()->fetchAll(

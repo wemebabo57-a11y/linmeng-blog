@@ -1,0 +1,6 @@
+Options -Indexes
+
+# The installer is locked by PHP after success. Do not serve its SQL file directly.
+<Files "schema.sql">
+    Require all denied
+</Files>

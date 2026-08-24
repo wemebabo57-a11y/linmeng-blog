@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>UI 预览</title>
+<link rel="stylesheet" href="/assets/css/style.css">
+<link rel="stylesheet" href="/assets/css/design-system.css">
+<link rel="stylesheet" href="/assets/css/theme-refresh.css">
+<style>body{background:var(--bg-color)}</style>
+</head>
+<body class="loaded">
+<div class="container main-wrapper">
+<main class="main-content">
+
+<section class="home-hero reveal-item">
+    <div class="home-hero-overlay"></div>
+    <div class="home-hero-content">
+        <div class="home-eyebrow">最新记录 · 2026.08.20</div>
+        <h1>林梦的博客</h1>
+        <p>记录生活，分享技术</p>
+        <div class="home-hero-actions">
+            <a href="#" class="btn btn-hero">查看文章</a>
+            <button type="button" class="btn btn-hero">搜索内容</button>
+        </div>
+    </div>
+    <div class="home-hero-panel home-hero-summary" aria-label="站点概览">
+        <div class="hero-stat-card"><span>12</span><small>文章</small></div>
+        <div class="hero-stat-card"><span>34</span><small>评论</small></div>
+        <div class="hero-stat-card"><span>560</span><small>运行天数</small></div>
+    </div>
+</section>
+
+<div class="card home-filter-card">
+    <div class="card-body">
+        <form method="GET" action="" class="search-box home-search-bar">
+            <input type="text" class="form-input" placeholder="搜索文章..." autocomplete="off">
+            <button type="submit" class="btn btn-primary">搜索</button>
+        </form>
+        <div class="home-filter-row">
+            <div class="home-filter-group">
+                <span class="home-filter-label">分类</span>
+                <div class="category-filter">
+                    <a href="#" class="active">全部</a>
+                    <a href="#">技术</a>
+                    <a href="#">生活</a>
+                    <a href="#">随笔</a>
+                </div>
+            </div>
+            <div class="home-filter-group home-sort-group">
+                <span class="home-filter-label">排序</span>
+                <div class="category-filter home-sort-filter">
+                    <a href="#" class="active">最新</a>
+                    <a href="#">热门</a>
+                    <a href="#">置顶</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="card article-list-card">
+    <div class="card-header article-list-toolbar">
+        <div class="card-title">文章列表</div>
+        <div class="article-list-summary">显示前 3 篇 / 共 12 篇</div>
+        <a href="#" class="article-list-more">查看全部</a>
+    </div>
+    <article class="article-item">
+        <h2 class="article-title"><a href="#"><span class="pin-badge"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg> 置顶</span> 博客全新改版上线</a></h2>
+        <div class="article-meta">
+            <span class="meta-item">3 天前</span>
+            <span class="meta-item">公告</span>
+            <span class="meta-item">128 阅读</span>
+        </div>
+        <div class="article-excerpt">这次改版聚焦阅读体验与性能，整理了三层历史样式，统一设计令牌，让页面更轻更快。</div>
+        <div class="article-actions"><a href="#" class="read-more-link">阅读全文</a></div>
+        <div class="article-tags"><a href="#" class="tag">改版</a><a href="#" class="tag">公告</a></div>
+    </article>
+    <article class="article-item">
+        <h2 class="article-title"><a href="#">PHP 单文件博客的缓存实践</a></h2>
+        <div class="article-meta">
+            <span class="meta-item">1 周前</span>
+            <span class="meta-item">技术</span>
+            <span class="meta-item">342 阅读</span>
+        </div>
+        <div class="article-excerpt">分享无框架环境下利用文件缓存与 OPcache 降低数据库压力的几个技巧，附压力测试数据。</div>
+        <div class="article-actions"><a href="#" class="read-more-link">阅读全文</a></div>
+        <div class="article-tags"><a href="#" class="tag">PHP</a><a href="#" class="tag">缓存</a></div>
+    </article>
+    <article class="article-item">
+        <h2 class="article-title"><a href="#">最近在玩的一些小工具</a></h2>
+        <div class="article-meta">
+            <span class="meta-item">2 周前</span>
+            <span class="meta-item">生活</span>
+            <span class="meta-item">210 阅读</span>
+        </div>
+        <div class="article-excerpt">整理了最近入手的效率小工具，从终端配置到桌面摆件，聊聊哪些真的提升了日常体验。</div>
+        <div class="article-actions"><a href="#" class="read-more-link">阅读全文</a></div>
+        <div class="article-tags"><a href="#" class="tag">效率</a><a href="#" class="tag">工具</a></div>
+    </article>
+</div>
+
+<div class="bottom-widgets">
+    <div class="widget">
+        <div class="widget-header"><span>站点统计</span></div>
+        <div class="widget-body">
+            <div class="stat-grid">
+                <div class="stat-cell"><div class="stat-value stat-value--primary">12</div><div class="stat-label">篇文章</div></div>
+                <div class="stat-cell"><div class="stat-value stat-value--success">34</div><div class="stat-label">条评论</div></div>
+                <div class="stat-cell"><div class="stat-value stat-value--warning">8</div><div class="stat-label">个标签</div></div>
+                <div class="stat-cell"><div class="stat-value stat-value--accent">560</div><div class="stat-label">天运行</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="widget">
+        <div class="widget-header"><span>一言</span></div>
+        <div class="widget-body"><div class="hitokoto-widget"><div class="hitokoto-text">夜晚的星空总是让人着迷。</div><div class="hitokoto-from">—— 某某</div></div></div>
+    </div>
+    <div class="widget">
+        <div class="widget-header"><span>热门文章</span></div>
+        <div class="widget-body">
+            <div class="link-list">
+                <a href="#" class="link-item link-item--compact"><div class="link-info"><div class="link-name">PHP 单文件博客的缓存实践</div><div class="link-desc">342 次阅读</div></div></a>
+                <a href="#" class="link-item link-item--compact"><div class="link-info"><div class="link-name">最近在玩的一些小工具</div><div class="link-desc">210 次阅读</div></div></a>
+            </div>
+        </div>
+    </div>
+</div>
+
+</main>
+<aside class="sidebar">
+    <div class="widget">
+        <div class="widget-body profile">
+            <img src="/assets/images/default-avatar.png" alt="头像" class="profile-avatar" width="88" height="88">
+            <div class="profile-name">林梦</div>
+            <div class="profile-desc">记录生活，分享技术</div>
+            <div class="profile-stats">
+                <div class="profile-stat"><div class="profile-stat-value">12</div><div class="profile-stat-label">文章</div></div>
+                <div class="profile-stat"><div class="profile-stat-value">34</div><div class="profile-stat-label">评论</div></div>
+                <div class="profile-stat"><div class="profile-stat-value">560</div><div class="profile-stat-label">运行天数</div></div>
+            </div>
+        </div>
+    </div>
+    <div class="widget">
+        <div class="widget-header"><span>友链</span><a href="#" class="widget-action-link">全部 →</a></div>
+        <div class="widget-body">
+            <div class="link-list">
+                <a href="#" class="link-item">
+                    <div class="link-avatar link-avatar--fallback">友</div>
+                    <div class="link-info"><div class="link-name">友站 A</div><div class="link-desc">一个很好的博客</div></div>
+                </a>
+                <a href="#" class="link-item">
+                    <div class="link-avatar link-avatar--fallback">友</div>
+                    <div class="link-info"><div class="link-name">友站 B</div><div class="link-desc">另一个博客</div></div>
+                </a>
+            </div>
+        </div>
+    </div>
+</aside>
+</div>
+</body>
+</html>

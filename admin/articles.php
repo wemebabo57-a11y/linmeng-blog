@@ -10,6 +10,7 @@ require_once LM_ROOT . '/includes/Security.php';
 require_once LM_ROOT . '/includes/Database.php';
 require_once LM_ROOT . '/includes/functions.php';
 require_once LM_ROOT . '/includes/AiSummaryCache.php';
+require_once LM_ROOT . '/includes/PageCache.php';
 
 session_start();
 requireAdmin();
@@ -32,43 +33,43 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         
         if (!empty($ids)) {
             try {
-                $idList = implode(',', $ids);
+                $placeholders = implode(',', array_fill(0, count($ids), '?'));
                 
                 switch ($action) {
                     case 'publish':
-                        db()->query("UPDATE lm_article SET status = 'published' WHERE id IN ($idList)");
+                        db()->query("UPDATE lm_article SET status = 'published' WHERE id IN ($placeholders)", $ids);
                         $message = '已发布 ' . count($ids) . ' 篇文章';
                         $messageType = 'success';
                         break;
 
                     case 'draft':
-                        db()->query("UPDATE lm_article SET status = 'draft' WHERE id IN ($idList)");
+                        db()->query("UPDATE lm_article SET status = 'draft' WHERE id IN ($placeholders)", $ids);
                         $message = '已设为草稿 ' . count($ids) . ' 篇文章';
                         $messageType = 'success';
                         break;
 
                     case 'pin':
-                        db()->query("UPDATE lm_article SET is_top = 1 WHERE id IN ($idList)");
+                        db()->query("UPDATE lm_article SET is_top = 1 WHERE id IN ($placeholders)", $ids);
                         $message = '已置顶 ' . count($ids) . ' 篇文章';
                         $messageType = 'success';
                         break;
 
                     case 'unpin':
-                        db()->query("UPDATE lm_article SET is_top = 0 WHERE id IN ($idList)");
+                        db()->query("UPDATE lm_article SET is_top = 0 WHERE id IN ($placeholders)", $ids);
                         $message = '已取消置顶 ' . count($ids) . ' 篇文章';
                         $messageType = 'success';
                         break;
 
                     case 'delete':
                         // 先记录正文引用，数据库删除全部成功后再清理 Markdown 文件。
-                        $articleBodies = db()->fetchAll("SELECT content FROM lm_article WHERE id IN ($idList)");
-                        $images = db()->fetchAll("SELECT image_url FROM lm_article_image WHERE article_id IN ($idList)");
+                        $articleBodies = db()->fetchAll("SELECT content FROM lm_article WHERE id IN ($placeholders)", $ids);
+                        $images = db()->fetchAll("SELECT image_url FROM lm_article_image WHERE article_id IN ($placeholders)", $ids);
                         db()->beginTransaction();
                         try {
-                            db()->query("DELETE FROM lm_article_image WHERE article_id IN ($idList)");
-                            db()->query("DELETE FROM lm_comment WHERE article_id IN ($idList)");
-                            db()->query("DELETE FROM lm_article_like WHERE article_id IN ($idList)");
-                            db()->query("DELETE FROM lm_article WHERE id IN ($idList)");
+                            db()->query("DELETE FROM lm_article_image WHERE article_id IN ($placeholders)", $ids);
+                            db()->query("DELETE FROM lm_comment WHERE article_id IN ($placeholders)", $ids);
+                            db()->query("DELETE FROM lm_article_like WHERE article_id IN ($placeholders)", $ids);
+                            db()->query("DELETE FROM lm_article WHERE id IN ($placeholders)", $ids);
                             db()->commit();
                         } catch (Exception $deleteError) {
                             if (db()->getPdo()->inTransaction()) {
@@ -80,7 +81,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                         foreach ($images as $img) {
                             $filePath = LM_ROOT . $img['image_url'];
                             if (file_exists($filePath) && strpos($filePath, LM_ROOT . '/assets/uploads/') === 0) {
-                                @unlink($filePath);
+                                if (!@unlink($filePath)) {
+                                    error_log('Article image cleanup failed: ' . $filePath);
+                                }
                             }
                         }
                         foreach ($articleBodies as $body) {
@@ -96,6 +99,11 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             } catch (Exception $e) {
                 $message = '操作失败: ' . $e->getMessage();
                 $messageType = 'error';
+            }
+
+            // 文章置顶/发布/删除等变更会改变前台列表，清空页面缓存以立即生效
+            if ($messageType === 'success') {
+                PageCache::purgeAll();
             }
         }
     }
@@ -284,7 +292,7 @@ require_once LM_ROOT . '/admin/template/header.php';
         <?php 
         $urlPattern = '/admin/articles.php?page=%d';
         if ($search) $urlPattern .= '&search=' . urlencode($search);
-        if ($statusFilter !== 'all') $urlPattern .= '&status=' . $statusFilter;
+        if ($statusFilter !== 'all') $urlPattern .= '&status=' . urlencode($statusFilter);
         if ($categoryFilter > 0) $urlPattern .= '&category=' . $categoryFilter;
         echo pagination($page, $totalPages, $urlPattern); 
         ?>

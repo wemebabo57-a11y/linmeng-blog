@@ -32,6 +32,10 @@ if (!isset($_COOKIE['lm_guide_seen'])) {
 // 匿名访客输出 CDN 可缓存的 Cache-Control（须在上述重定向之后，避免 302 被共享缓存）
 lm_public_cache_headers();
 
+// 静态页面缓存（仅匿名 GET/HEAD；search 等非白名单 query 不缓存）
+require_once LM_ROOT . '/includes/PageCache.php';
+PageCache::start(['page', 'all', 'sort', 'category']);
+
 $pageTitle = '首页';
 $currentPage = 'home';
 $siteName = getSetting('site_name', '林梦的博客');
@@ -77,7 +81,17 @@ if ($categoryId > 0) {
 try {
     $totalArticles = db()->fetchColumn("SELECT COUNT(*) FROM lm_article a WHERE {$where}", $params);
     $totalPages = ceil($totalArticles / $perPage);
-    $orderBy = $sort === 'hot' ? 'a.is_top DESC, a.views DESC, a.created_at DESC' : ($sort === 'top' ? 'a.is_top DESC, a.created_at DESC' : 'a.is_top DESC, a.created_at DESC');
+    switch ($sort) {
+        case 'hot':
+            $orderBy = 'a.is_top DESC, a.views DESC, a.created_at DESC';
+            break;
+        case 'top':
+            $orderBy = 'a.is_top DESC, a.created_at DESC';
+            break;
+        default:
+            $orderBy = 'a.is_top DESC, a.created_at DESC';
+            break;
+    }
 
     // 搜索/筛选时直接展示全部（带分页），否则默认只展示4篇
     if ($search || $categoryId > 0 || $showAll) {

@@ -123,23 +123,21 @@ $giteeLogin = trim($giteeUser['login'] ?? '');
 $giteeName = trim($giteeUser['name'] ?? '');
 $giteeEmail = trim($giteeUser['email'] ?? '');
 $giteeAvatar = trim($giteeUser['avatar_url'] ?? '');
-// Gitee 公开邮箱默认已验证；无公开邮箱时不用于绑定已有账号，仅用于新建账号
-$giteeEmailVerified = !empty($giteeEmail);
-
+// 安全说明：Gitee 公开邮箱不含"已验证"语义，任何人可设置为他人邮箱，
+// 因此绝不按 email 匹配绑定已有账号（防账号接管）。
+// 已有账号的绑定仅限登录态下由用户本人主动发起。
 try {
     // 尝试查找已绑定的用户
     $user = db()->fetchOne("SELECT * FROM lm_admin WHERE gitee_id = ?", [$giteeId]);
 
-    if (!$user && !empty($giteeEmail) && $giteeEmailVerified) {
-        // 如果邮箱已存在，允许绑定到同一账号（仅限 Gitee 已验证邮箱）
-        $user = db()->fetchOne("SELECT * FROM lm_admin WHERE email = ?", [$giteeEmail]);
-        if ($user) {
-            db()->update('lm_admin', [
-                'gitee_id' => $giteeId,
-                'gitee_username' => $giteeLogin
-            ], 'id = ?', [$user['id']]);
-            $user['gitee_id'] = $giteeId;
-        }
+    if (!$user && isLoggedIn() && (int)($_SESSION['user_id'] ?? 0) > 0) {
+        // 登录态下主动绑定当前账号
+        $bindUid = (int)$_SESSION['user_id'];
+        db()->update('lm_admin', [
+            'gitee_id' => $giteeId,
+            'gitee_username' => $giteeLogin
+        ], 'id = ?', [$bindUid]);
+        $user = db()->fetchOne("SELECT * FROM lm_admin WHERE id = ?", [$bindUid]);
     }
 
     if (!$user) {

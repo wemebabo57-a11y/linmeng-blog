@@ -14,6 +14,10 @@ lm_session_start();
 Security::setSecurityHeaders();
 lm_public_cache_headers();
 
+// 静态页面缓存（仅匿名 GET/HEAD，白名单外的 query 不缓存）
+require_once LM_ROOT . '/includes/PageCache.php';
+PageCache::start([]);
+
 $pageTitle = '文章归档';
 $currentPage = 'archive';
 

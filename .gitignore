@@ -1,28 +1,25 @@
 # 敏感凭据（永远不要提交）
 .env
-.env.bak
-.env.local
+.env.*
+!.env.example
 .user.ini
 
-# 安装标记（由 setup 向导生成）
+# 安装标记
 /includes/config_installed.php
+
+# 安装目录产生的锁定文件
+/setup/.installed
 
 # 用户上传内容
 /assets/uploads/*
 !/assets/uploads/index.html
 
-# 运行时生成的 Markdown 文章源文件（保留 .gitkeep 占位）
-/includes/articles/*
-!/includes/articles/.gitkeep
-
-# AI 摘要缓存（保留 .gitkeep 占位）
-/includes/cache/**
-!/includes/cache/**/
-!/includes/cache/**/.gitkeep
-
 # 日志
 *.log
 /logs/
+
+# 页面缓存（PageCache 运行时生成）
+/cache/
 
 # IDE / 编辑器
 .vscode/
@@ -37,5 +34,5 @@ Thumbs.db
 /dist/
 /build/
 
-# 本地工作产物目录
+# Trae 计划/文档目录（本地工作产物）
 /.trae/

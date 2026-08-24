@@ -38,8 +38,9 @@ $now = time();
 $lastProbeAt = getSetting('service_last_probe_at', '');
 $needProbeAll = (!$lastProbeAt) || (strtotime($lastProbeAt) < $now - $interval * 60);
 
-// 用户手动点击"刷新状态"时强制重新探测
-$forceProbe = isset($_GET['force']) && $_GET['force'] === '1';
+// 不允许公开请求绕过探测间隔，避免被用来放大外部请求和数据库写入。
+// 后台管理员和 CLI 任务应通过受保护入口执行立即探测。
+$forceProbe = false;
 
 if (($needProbeAll || $forceProbe) && !$fetchError && count($services) > 0) {
     try {
@@ -282,8 +283,8 @@ require_once LM_ROOT . '/template/header.php';
 
 <script>
 document.getElementById('status-refresh-btn')?.addEventListener('click', function () {
-    // 强制重新探测并刷新页面
-    window.location.href = window.location.pathname + '?force=1&t=' + Date.now();
+    // 刷新页面读取最新缓存的探测结果；即时探测由后台/定时任务执行，公开页不再强制探测。
+    window.location.href = window.location.pathname + '?t=' + Date.now();
 });
 // 按后台设置的探测间隔自动刷新
 setTimeout(function () {

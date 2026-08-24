@@ -28,7 +28,6 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             'site_name',
             'site_description',
             'site_keywords',
-            'site_icp',
             'site_footer',
             'admin_email',
             'github_url',
@@ -253,16 +252,9 @@ require_once LM_ROOT . '/admin/template/header.php';
                 <div class="form-hint">多个关键词用逗号分隔</div>
             </div>
             
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
-                <div class="form-group">
-                    <label class="form-label">ICP备案号</label>
-                    <input type="text" name="site_icp" class="form-input" value="<?php echo e($settings['site_icp'] ?? ''); ?>">
-                </div>
-                
-                <div class="form-group">
-                    <label class="form-label">站长邮箱</label>
-                    <input type="email" name="admin_email" class="form-input" value="<?php echo e($settings['admin_email'] ?? ''); ?>">
-                </div>
+            <div class="form-group">
+                <label class="form-label">站长邮箱</label>
+                <input type="email" name="admin_email" class="form-input" value="<?php echo e($settings['admin_email'] ?? ''); ?>">
             </div>
             
             <div class="form-group">

@@ -485,20 +485,106 @@ function generateSlug($title) {
 }
 
 /**
+ * 判断当前请求是否为 HTTPS（兼容反向代理 / CDN 转发）。
+ * 与 config.php、api 等处的判断逻辑保持一致，避免各处重复且不一致的检测。
+ */
+function lm_is_https() {
+    return (!empty($_SERVER['HTTPS']) && $_SERVER['HTTPS'] !== 'off')
+        || (!empty($_SERVER['HTTP_X_FORWARDED_PROTO']) && $_SERVER['HTTP_X_FORWARDED_PROTO'] === 'https');
+}
+
+/**
  * 公共页面条件会话：
- * - 携带会话 Cookie 或非 GET/HEAD 请求（表单提交）：正常开启会话；
+ * - 携带会话 Cookie / 记住登录 Cookie，或非 GET/HEAD 请求（表单提交）：正常开启会话；
  * - 匿名 GET：不开启会话，响应不带 Set-Cookie，可被 CDN 缓存。
  * 返回 true 表示会话已开启。
+ *
+ * 携带 remember_token 的访客视为非匿名，会开启会话并尝试自动登录，
+ * 因此其响应为私有、不进共享缓存。
  */
 function lm_session_start() {
     if (session_status() === PHP_SESSION_ACTIVE) {
+        lm_attempt_remember_login();
         return true;
     }
     $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
-    if (isset($_COOKIE[session_name()]) || ($method !== 'GET' && $method !== 'HEAD')) {
-        return (bool)session_start();
+    $hasRemember = !empty($_COOKIE['remember_token']);
+    if (isset($_COOKIE[session_name()]) || $hasRemember || ($method !== 'GET' && $method !== 'HEAD')) {
+        $started = session_start();
+        if ($started) {
+            lm_attempt_remember_login();
+        }
+        return (bool)$started;
     }
     return false;
+}
+
+/**
+ * 尝试通过 remember_token Cookie 自动登录（“记住我”）。
+ *
+ * - 已登录或无 Cookie 时直接返回；
+ * - 命中数据库中启用状态的用户后写入会话，并轮换令牌（旧 Cookie 失效），
+ *   降低令牌被盗用后的可重放窗口；
+ * - 需要一个已开启的会话；若尚未开启会先行开启。
+ *
+ * 返回 true 表示已成功自动登录。
+ */
+function lm_attempt_remember_login() {
+    if (isLoggedIn()) {
+        return true;
+    }
+    $raw = isset($_COOKIE['remember_token']) ? (string)$_COOKIE['remember_token'] : '';
+    // 本站令牌由 Security::randomString(32) 生成，为 32 位十六进制；做基本格式校验避免无谓查询
+    if ($raw === '' || !preg_match('/^[a-f0-9]{16,128}$/i', $raw)) {
+        return false;
+    }
+
+    if (session_status() !== PHP_SESSION_ACTIVE) {
+        if (headers_sent() || !session_start()) {
+            return false;
+        }
+    }
+
+    try {
+        $hashed = hash('sha256', $raw);
+        $user = db()->fetchOne(
+            "SELECT * FROM lm_admin WHERE remember_token = ? AND status = 1",
+            [$hashed]
+        );
+    } catch (Exception $e) {
+        return false;
+    }
+
+    if (!$user) {
+        return false;
+    }
+
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['role'] = $user['role'];
+    $_SESSION['is_admin'] = ($user['role'] === 'admin');
+
+    // 防会话固定
+    session_regenerate_id(true);
+
+    // 轮换令牌：旧 Cookie 立即失效
+    try {
+        $newToken = Security::randomString(32);
+        db()->update('lm_admin', ['remember_token' => hash('sha256', $newToken)], 'id = ?', [$user['id']]);
+        if (!headers_sent()) {
+            setcookie('remember_token', $newToken, [
+                'expires'  => time() + 30 * 86400,
+                'path'     => '/',
+                'httponly' => true,
+                'secure'   => lm_is_https(),
+                'samesite' => 'Lax'
+            ]);
+        }
+    } catch (Exception $e) {
+        // 令牌轮换失败不影响本次登录
+    }
+
+    return true;
 }
 
 /**
@@ -576,6 +662,9 @@ function currentUser() {
  */
 function requireLogin() {
     if (!isLoggedIn()) {
+        lm_attempt_remember_login();
+    }
+    if (!isLoggedIn()) {
         Security::redirect('/login.php');
     }
 }
@@ -584,6 +673,9 @@ function requireLogin() {
  * 要求管理员权限
  */
 function requireAdmin() {
+    if (!isLoggedIn()) {
+        lm_attempt_remember_login();
+    }
     if (!isAdmin()) {
         Security::redirect('/');
     }

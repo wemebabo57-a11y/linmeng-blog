@@ -21,6 +21,7 @@ $adminUser = currentUser();
     <title><?php echo isset($pageTitle) ? e($pageTitle) . ' - 后台管理' : '后台管理'; ?> - <?php echo e($siteName); ?></title>
     <link rel="stylesheet" href="/assets/css/style.css?v=<?php echo LM_VERSION; ?>">
     <link rel="stylesheet" href="/assets/css/theme-refresh.css?v=<?php echo LM_VERSION; ?>">
+    <link rel="stylesheet" href="/assets/css/admin-theme.css?v=<?php echo LM_VERSION; ?>">
     <script>
     (function() {
         var theme = 'auto';
@@ -43,7 +44,7 @@ $adminUser = currentUser();
         <aside class="admin-sidebar" id="admin-sidebar">
             <div class="admin-sidebar-header">
                 <div class="admin-sidebar-title"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 4px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>后台管理</div>
-                <div style="font-size: 0.85rem; color: #94a3b8; margin-top: 4px;"><?php echo e($siteName); ?></div>
+                <div class="admin-sidebar-site"><?php echo e($siteName); ?></div>
             </div>
             <nav class="admin-nav">
                 <a href="index.php" class="admin-nav-item <?php echo $currentPage === 'dashboard' ? 'active' : ''; ?>">
@@ -89,18 +90,16 @@ $adminUser = currentUser();
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: -3px; margin-right: 6px;"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>网站设置
                 </a>
             </nav>
-            <div style="padding: 16px; border-top: 1px solid #334155;">
-                <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 12px;">
-                    <div style="width: 32px; height: 32px; border-radius: 50%; background: var(--primary-color); display: flex; align-items: center; justify-content: center; color: white; font-size: 0.9rem;">
-                        <?php echo mb_substr($adminUser['nickname'] ?: $adminUser['username'], 0, 1); ?>
-                    </div>
+            <div class="admin-sidebar-footer">
+                <div class="admin-user-block">
+                    <div class="admin-user-avatar"><?php echo mb_substr($adminUser['nickname'] ?: $adminUser['username'], 0, 1); ?></div>
                     <div>
-                        <div style="font-size: 0.9rem; font-weight: 500;"><?php echo e($adminUser['nickname'] ?: $adminUser['username']); ?></div>
-                        <div style="font-size: 0.75rem; color: #94a3b8;">管理员</div>
+                        <div class="admin-user-name"><?php echo e($adminUser['nickname'] ?: $adminUser['username']); ?></div>
+                        <div class="admin-user-role">管理员</div>
                     </div>
                 </div>
-                <a href="/" target="_blank" class="btn btn-sm btn-secondary" style="width: 100%; margin-bottom: 8px;">查看网站</a>
-                <a href="/logout.php" class="btn btn-sm btn-danger" style="width: 100%;">退出登录</a>
+                <a href="/" target="_blank" class="btn btn-sm btn-secondary">查看网站</a>
+                <a href="/logout.php" class="btn btn-sm btn-danger">退出登录</a>
             </div>
         </aside>
         

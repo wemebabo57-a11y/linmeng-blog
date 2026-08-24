@@ -12,6 +12,9 @@ require_once LM_ROOT . '/includes/functions.php';
 session_start();
 Security::setSecurityHeaders();
 
+// 携带 remember_token 的访客尝试自动登录（“记住我”）
+lm_attempt_remember_login();
+
 // 已登录则跳转
 if (isLoggedIn()) {
     Security::redirect('/');
@@ -138,8 +141,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                                 'expires' => time() + 30 * 86400,
                                 'path' => '/',
                                 'httponly' => true,
-                                'secure' => isset($_SERVER['HTTPS']) && $_SERVER['HTTPS'] === 'on',
-                                'samesite' => 'Strict'
+                                'secure' => lm_is_https(),
+                                'samesite' => 'Lax'
                             ]);
                         }
                         
@@ -183,6 +186,24 @@ $pageTitle = '登录';
     <title><?php echo e($pageTitle); ?> - <?php echo e(getSetting('site_name', '林梦的博客')); ?></title>
     <link rel="stylesheet" href="/assets/css/style.css?v=<?php echo LM_VERSION; ?>">
     <link rel="stylesheet" href="/assets/css/design-system.css?v=<?php echo LM_VERSION; ?>">
+    <link rel="stylesheet" href="/assets/css/theme-refresh.css?v=<?php echo LM_VERSION; ?>">
+    <link rel="stylesheet" href="/assets/css/admin-theme.css?v=<?php echo LM_VERSION; ?>">
+    <script>
+    // 与后台一致的主题初始化：在首帧绘制前写入 data-theme，避免闪烁
+    (function() {
+        var theme = 'auto';
+        try {
+            theme = localStorage.getItem('theme') || 'auto';
+        } catch (e) {
+            theme = 'auto';
+        }
+        if (theme === 'dark') {
+            document.documentElement.setAttribute('data-theme', 'dark');
+        } else if (theme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    })();
+    </script>
     <!-- 与全站统一的字体：Playfair Display + LXGW WenKai -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -195,6 +216,9 @@ $pageTitle = '登录';
 <body>
     <div class="login-page">
         <div class="login-box">
+            <div class="login-brand">
+                <span class="login-brand-mark" aria-hidden="true"><?php echo e(mb_substr(getSetting('site_name', '林梦的博客'), 0, 1)); ?></span>
+            </div>
             <div class="login-title">欢迎回来</div>
             <div class="login-subtitle">登录到 <?php echo e(getSetting('site_name', '林梦的博客')); ?></div>
             

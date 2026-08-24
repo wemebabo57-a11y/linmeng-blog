@@ -1,0 +1,688 @@
+/* ============================================================
+ * admin-theme.css — 后台统一视觉覆盖层
+ * 加载位置：theme-refresh.css 之后（后台/allgates 页面专用）
+ * 只消费设计令牌（--primary-color 等），不写死品牌色，
+ * 浅色/深色双主题经 [data-theme="dark"] 令牌切换自动生效。
+ * ============================================================ */
+
+/* ---------------- 布局骨架 ---------------- */
+.admin-wrapper {
+    min-height: 100vh;
+    background: var(--bg-color);
+}
+
+/* 侧边栏：深色墨块，两种主题下保持一致的"控制台"感 */
+.admin-sidebar {
+    background: #22272d;            /* 安静编辑风的墨色，不随主题切换 */
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+    display: flex;
+    flex-direction: column;
+}
+
+.admin-sidebar-header {
+    padding: 22px 20px 18px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.admin-sidebar-title {
+    font-family: var(--font-display);
+    font-size: 1.1rem;
+    font-weight: 700;
+    color: #f4f5f6;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.admin-sidebar-title svg {
+    color: var(--primary-color);
+    flex: 0 0 auto;
+}
+
+.admin-sidebar-site {
+    font-size: 0.8rem;
+    color: rgba(255, 255, 255, 0.45);
+    margin-top: 4px;
+    padding-left: 24px;
+}
+
+.admin-nav {
+    flex: 1 1 auto;
+    overflow-y: auto;
+    padding: 12px 0;
+}
+
+.admin-nav-item {
+    position: relative;
+    color: rgba(255, 255, 255, 0.62);
+    border-radius: var(--radius);
+    margin: 2px 10px;
+    padding: 10px 14px;
+    transition: background-color 0.18s ease, color 0.18s ease;
+}
+
+.admin-nav-item:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: #f4f5f6;
+}
+
+/* 选中态：主色指示条 + 浅色底，比纯灰底层级更清楚 */
+.admin-nav-item.active {
+    background: var(--primary-light);
+    color: #fff;
+}
+
+.admin-nav-item.active::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 18px;
+    border-radius: 0 2px 2px 0;
+    background: var(--primary-color);
+}
+
+/* 侧边栏底部用户区（header.php 的 admin-sidebar-footer） */
+.admin-sidebar-footer {
+    flex: 0 0 auto;
+    padding: 16px;
+    border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.admin-user-block {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.admin-user-avatar {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    background: var(--primary-color);
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 0.9rem;
+    font-weight: 600;
+    flex: 0 0 auto;
+}
+
+.admin-user-name {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #f4f5f6;
+    line-height: 1.3;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.admin-user-role {
+    font-size: 0.75rem;
+    color: rgba(255, 255, 255, 0.45);
+}
+
+.admin-sidebar-footer .btn {
+    width: 100%;
+    margin-top: 8px;
+    justify-content: center;
+}
+
+/* ---------------- 顶栏与内容区 ---------------- */
+.admin-header {
+    position: sticky;
+    top: 0;
+    z-index: 50;
+    gap: 12px;
+}
+
+.admin-header h1 {
+    font-size: 1.15rem;
+}
+
+.admin-content {
+    max-width: 1200px;
+    padding: 28px;
+}
+
+/* ---------------- 卡片 ---------------- */
+.admin-content .card,
+.admin-content .stat-card,
+.admin-content .info-box {
+    border-color: var(--border-subtle);
+    border-radius: var(--radius-lg);
+    box-shadow: var(--shadow-sm);
+}
+
+.admin-content .card-header {
+    padding: 16px 22px;
+    border-bottom: 1px solid var(--border-subtle);
+}
+
+.admin-content .card-title {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--text-primary);
+    gap: 8px;
+}
+
+.admin-content .card-title svg {
+    width: 18px;
+    height: 18px;
+    color: var(--primary-color);
+}
+
+.admin-content .card-body {
+    padding: 22px;
+}
+
+/* ---------------- 统计卡 ---------------- */
+.stat-cards {
+    gap: 16px;
+}
+
+.admin-content .stat-card {
+    padding: 20px 22px;
+    border-left: 3px solid transparent;
+    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+}
+
+.admin-content .stat-card:hover {
+    transform: none;                 /* 克制：去掉浮动位移，用边框色提示 */
+    border-left-color: var(--primary-color);
+    box-shadow: var(--shadow-md);
+}
+
+.stat-card-value {
+    font-family: var(--font-display);
+}
+
+/* ---------------- 数据表 ---------------- */
+.admin-content .data-table {
+    font-size: 0.9rem;
+}
+
+/* 表头吸顶：表格在 .card-body 内滚动时表头保持可见 */
+.admin-content .card-body .data-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: var(--bg-subtle);
+    box-shadow: inset 0 -1px 0 var(--border-color);
+    font-size: 0.78rem;
+    letter-spacing: 0.6px;
+    color: var(--text-tertiary);
+    white-space: nowrap;
+}
+
+.admin-content .data-table th,
+.admin-content .data-table td {
+    padding: 12px 16px;
+    vertical-align: middle;
+}
+
+/* 斑马纹 */
+.admin-content .data-table tbody tr:nth-child(even) {
+    background: var(--bg-subtle);
+}
+
+/* 悬停行微调（斑马纹之上再压一层主色淡底） */
+.admin-content .data-table tbody tr:hover {
+    background: var(--primary-lighter);
+}
+
+.admin-content .card-body:has(.data-table) {
+    overflow-x: auto;
+}
+
+/* ---------------- 表单 ---------------- */
+.admin-content .form-label {
+    font-size: 0.85rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+}
+
+.admin-content .form-input,
+.admin-content .form-select,
+.admin-content .form-textarea {
+    background: var(--input-bg, var(--card-bg));
+    border-color: var(--border-color);
+    transition: border-color 0.16s ease, box-shadow 0.16s ease;
+}
+
+.admin-content .form-input:hover,
+.admin-content .form-select:hover,
+.admin-content .form-textarea:hover {
+    border-color: var(--border-strong);
+}
+
+.admin-content .form-input:focus,
+.admin-content .form-select:focus,
+.admin-content .form-textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+    outline: none;
+}
+
+.admin-content .form-hint {
+    color: var(--text-tertiary);
+}
+
+/* setting 页背景位置九宫格 */
+.admin-content .bg-pos-cell {
+    border-color: var(--border-color);
+    border-radius: var(--radius);
+}
+
+.admin-content .bg-pos-cell.is-active {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+}
+
+/* ---------------- 按钮层级 ---------------- */
+.admin-content .btn {
+    border-radius: 7px;
+    font-weight: 600;
+    transition: background-color 0.16s ease, color 0.16s ease,
+                border-color 0.16s ease, transform 0.12s ease,
+                box-shadow 0.16s ease;
+}
+
+.admin-content .btn:active {
+    transform: translateY(0.5px);
+}
+
+.admin-content .btn-primary {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+    color: #fff;
+}
+
+.admin-content .btn-primary:hover {
+    background: var(--primary-hover);
+    border-color: var(--primary-hover);
+}
+
+.admin-content .btn-secondary {
+    background: var(--bg-elevated);
+    border: 1px solid var(--border-color);
+    color: var(--text-secondary);
+}
+
+.admin-content .btn-secondary:hover {
+    border-color: var(--border-strong);
+    color: var(--text-primary);
+}
+
+/* 危险操作守住层级：sm 里弱化为描边按钮 */
+.admin-content .btn-sm.btn-danger {
+    background: transparent;
+    border: 1px solid var(--danger-color);
+    color: var(--danger-color);
+}
+
+.admin-content .btn-sm.btn-danger:hover {
+    background: var(--danger-light);
+}
+
+.admin-content .btn-sm.btn-success {
+    background: transparent;
+    border: 1px solid var(--success-color);
+    color: var(--success-color);
+}
+
+.admin-content .btn-sm.btn-success:hover {
+    background: var(--success-light);
+}
+
+/* ---------------- 徽章 ---------------- */
+.admin-content .badge {
+    border-radius: 999px;
+    padding: 3px 10px;
+    font-weight: 600;
+    letter-spacing: 0;
+}
+
+/* ---------------- Admin Tabs ---------------- */
+.admin-content .admin-tabs {
+    gap: 2px;
+    border-bottom-color: var(--border-subtle);
+}
+
+.admin-content .admin-tab {
+    padding: 10px 16px;
+    font-size: 0.9rem;
+    border-bottom-width: 2px;
+    transition: color 0.16s ease, border-color 0.16s ease;
+}
+
+/* ---------------- 过滤条 ---------------- */
+.admin-content .filter-bar {
+    gap: 10px;
+    padding: 4px 0;
+}
+
+.admin-content .filter-bar .form-input,
+.admin-content .filter-bar .form-select {
+    height: 36px;
+    padding: 6px 12px;
+    font-size: 0.88rem;
+}
+
+/* ---------------- 编辑页辅助块 ---------------- */
+.admin-content .upload-area {
+    border-radius: var(--radius-lg);
+    border-color: var(--border-color);
+    transition: border-color 0.18s ease, background-color 0.18s ease;
+}
+
+.admin-content .upload-area:hover {
+    border-color: var(--primary-color);
+    background: var(--primary-lighter);
+}
+
+.admin-content .modal-panel {
+    border-radius: var(--radius-lg);
+    border: 1px solid var(--border-subtle);
+    box-shadow: var(--shadow-lg);
+}
+
+/* ---------------- 响应式 ---------------- */
+
+/* ≤1024：侧边栏抽屉化（main.js 通过 #admin-menu-toggle 切换 .open） */
+@media (max-width: 1024px) {
+    .admin-sidebar {
+        box-shadow: var(--shadow-lg);
+    }
+
+    .admin-main {
+        margin-left: 0;
+    }
+
+    .admin-content {
+        max-width: none;
+        padding: 20px;
+    }
+
+    .admin-header {
+        padding: 14px 20px;
+    }
+}
+
+/* ≤768：统计卡两列、内容收紧 */
+@media (max-width: 768px) {
+    .admin-header {
+        padding: 12px 16px;
+        flex-wrap: wrap;
+        row-gap: 8px;
+    }
+
+    .admin-header h1 {
+        font-size: 1.05rem;
+    }
+
+    .admin-content {
+        padding: 16px;
+    }
+
+    .stat-cards {
+        gap: 12px;
+    }
+
+    .admin-content .stat-card {
+        padding: 16px 18px;
+    }
+
+    .stat-card-value {
+        font-size: 1.6rem;
+    }
+
+    .admin-content .card-body {
+        padding: 16px;
+    }
+
+    .admin-content .filter-bar {
+        flex-direction: column;
+        align-items: stretch;
+    }
+
+    .admin-content .filter-bar .form-input,
+    .admin-content .filter-bar .form-select,
+    .admin-content .filter-bar .btn {
+        width: 100%;
+    }
+}
+
+/* ≤480：单列、侧边栏全宽抽屉 */
+@media (max-width: 480px) {
+    .admin-content {
+        padding: 12px;
+    }
+
+    .admin-sidebar {
+        width: min(320px, 88vw);
+    }
+
+    .admin-content .data-table {
+        font-size: 0.84rem;
+    }
+
+    .admin-content .data-table th,
+    .admin-content .data-table td {
+        padding: 10px 12px;
+    }
+
+    .admin-content .form-row {
+        flex-direction: column;
+        gap: 0;
+    }
+
+    .admin-content .btn {
+        font-size: 0.88rem;
+    }
+}
+
+/* 尊重用户动效偏好：禁掉一切过渡与动画 */
+@media (prefers-reduced-motion: reduce) {
+    .admin-wrapper, .admin-wrapper *,
+    .admin-header, .admin-content,
+    .admin-sidebar, .admin-nav-item,
+    .admin-content .btn, .admin-content .card,
+    .admin-content .stat-card, .admin-content .form-input,
+    .admin-content .form-select, .admin-content .form-textarea {
+        animation: none !important;
+        transition: none !important;
+    }
+}
+
+/* ============================================================
+ * 登录/注册（auth）页面 —— login.php 直接加载本文件，
+ * register.php 通过前台模板的 $extraCss 引入。
+ * ============================================================ */
+
+/* 安静编辑风：纸感底 + 克制品牌点缀 */
+.login-page {
+    background: var(--bg-color);
+}
+
+.login-page::before {
+    /* 用对角微渐变替代原来的漂浮光斑，画面更安静 */
+    background:
+        radial-gradient(ellipse 60% 45% at 15% 0%, var(--primary-light) 0%, transparent 60%),
+        radial-gradient(ellipse 55% 45% at 90% 100%, var(--accent-light, rgba(22, 138, 130, 0.1)) 0%, transparent 60%);
+    animation: none;
+    width: 100%;
+    height: 100%;
+    top: 0;
+    left: 0;
+}
+
+.login-box {
+    background: var(--card-bg);
+    border: 1px solid var(--border-subtle);
+    border-radius: var(--radius-xl);
+    box-shadow: var(--shadow-lg);
+    padding: 40px 40px 36px;
+}
+
+/* 品牌区 */
+.login-brand {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 14px;
+}
+
+.login-brand-mark {
+    width: 52px;
+    height: 52px;
+    border-radius: 14px;
+    background: var(--primary-color);
+    color: #fff;
+    font-family: var(--font-display);
+    font-size: 1.5rem;
+    font-weight: 700;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 16px var(--primary-glow);
+}
+
+.login-title {
+    font-family: var(--font-display);
+    font-size: 1.45rem;
+    letter-spacing: 0;
+}
+
+.login-subtitle {
+    color: var(--text-tertiary);
+    margin-bottom: 30px;
+}
+
+/* 表单焦点态（深色主题下 style.css 默认 focus 阴影可能偏粉，统一到主色） */
+.login-box .form-input:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+    outline: none;
+}
+
+.login-box .form-input::placeholder {
+    color: var(--text-tertiary);
+}
+
+/* 错误/成功提示：左侧主色条 + 圆角收紧 */
+.login-box .alert,
+.auth-apply .alert {
+    border-radius: var(--radius);
+    border: 1px solid transparent;
+    border-left-width: 3px;
+    font-size: 0.88rem;
+    line-height: 1.55;
+    padding: 12px 16px;
+}
+
+.login-box .alert-error,
+.auth-apply .alert-error {
+    background: var(--danger-light);
+    border-color: var(--danger-color);
+    color: var(--danger-color);
+}
+
+.login-box .alert-success,
+.auth-apply .alert-success {
+    background: var(--success-light);
+    border-color: var(--success-color);
+    color: var(--success-color);
+}
+
+/* OAuth 与提交按钮统一高度 */
+.login-box .btn {
+    min-height: 42px;
+    border-radius: 7px;
+    font-weight: 600;
+}
+
+.login-box .btn-primary {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.login-box .btn-primary:hover {
+    background: var(--primary-hover);
+}
+
+/* 记住我一行：对齐微调（inline 样式保持不变，这里只做间距） */
+.login-box label + .form-input,
+.login-box .form-group .form-input {
+    margin-top: 0;
+}
+
+/* 分割线容器已在 login.php 内联，仅规范其文字颜色 */
+.login-box a {
+    color: var(--primary-color);
+}
+
+.login-box a:hover {
+    color: var(--primary-hover);
+}
+
+/* register.php：前台卡片重写为居中的"申请单"式样 */
+.auth-apply {
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+.auth-apply .card {
+    border-color: var(--border-subtle);
+    box-shadow: var(--shadow-md);
+}
+
+.auth-apply .form-input:focus,
+.auth-apply .form-textarea:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px var(--primary-light);
+    outline: none;
+}
+
+.auth-apply .btn-primary {
+    background: var(--primary-color);
+    border-color: var(--primary-color);
+}
+
+.auth-apply .btn-primary:hover {
+    background: var(--primary-hover);
+}
+
+@media (max-width: 768px) {
+    .login-box {
+        margin: 20px;
+        padding: 30px 24px;
+    }
+
+    .auth-apply {
+        margin: 0 auto;
+    }
+}
+
+@media (max-width: 480px) {
+    .login-box {
+        margin: 14px;
+        padding: 26px 20px;
+    }
+
+    .login-title {
+        font-size: 1.3rem;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .login-page, .login-box, .login-box *,
+    .auth-apply, .auth-apply * {
+        animation: none !important;
+        transition: none !important;
+    }
+}

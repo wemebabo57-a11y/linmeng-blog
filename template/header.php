@@ -12,6 +12,19 @@ $siteDesc = getSetting('site_description', '记录生活，分享技术');
 $siteKeywords = getSetting('site_keywords', '林梦,博客,技术,生活');
 $favicon = getSetting('site_favicon', '');
 
+// 记录服务端收到的来源主机，作为浏览器 document.referrer 为空时的兜底。
+$serverReferrerHost = '';
+$serverReferrer = trim((string)($_SERVER['HTTP_REFERER'] ?? ''));
+if ($serverReferrer !== '') {
+    $parsedReferrerHost = parse_url($serverReferrer, PHP_URL_HOST);
+    if (is_string($parsedReferrerHost)) {
+        $serverReferrerHost = strtolower($parsedReferrerHost);
+        if (strpos($serverReferrerHost, 'www.') === 0) {
+            $serverReferrerHost = substr($serverReferrerHost, 4);
+        }
+    }
+}
+
 // 全站背景图设置（在 body 上应用，所有页面生效）
 $siteBackground = getSetting('site_background', '');
 $siteBackgroundPosition = getSetting('site_background_position', 'center center');
@@ -47,7 +60,6 @@ if ($siteBackground !== '') {
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta name="description" content="<?php echo e($siteDesc); ?>">
     <meta name="keywords" content="<?php echo e($siteKeywords); ?>">
-    <meta name="author" content="林梦">
     <meta name="csrf-token" content="<?php echo Security::generateToken(); ?>">
     <meta name="csrf-token-name" content="<?php echo e(CSRF_TOKEN_NAME); ?>">
 
@@ -74,6 +86,54 @@ if ($siteBackground !== '') {
     })();
     </script>
 
+    <!-- 外部来源欢迎提示：仅对指定来源显示，直接打开页面不提示。 -->
+    <script>
+    (function () {
+        var clientReferrer = document.referrer;
+        var serverReferrerHost = <?php echo json_encode($serverReferrerHost, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE); ?>;
+        var messages = {
+            'moe.one': '欢迎从萌社区来的朋友',
+            'csdn.net': '欢迎从csdn来的朋友',
+            'techboy07.top': '欢迎从老域名来的朋友'
+        };
+
+        function getHost(value) {
+            try {
+                var host = value ? new URL(value).hostname.toLowerCase() : '';
+                return host.indexOf('www.') === 0 ? host.slice(4) : host;
+            } catch (error) {
+                return '';
+            }
+        }
+
+        var hostname = getHost(clientReferrer) || serverReferrerHost;
+        var message = messages[hostname];
+        if (!message) return;
+
+        function showWelcome() {
+            if (typeof window.showToast === 'function') {
+                window.showToast(message, 'info');
+                return;
+            }
+
+            var toast = document.createElement('div');
+            toast.textContent = message;
+            toast.setAttribute('role', 'status');
+            toast.style.cssText = 'position:fixed;top:20px;right:20px;z-index:99999;max-width:calc(100vw - 40px);padding:12px 18px;border:1px solid rgba(255,123,165,.3);border-radius:10px;background:#fff;color:#2d1f2a;box-shadow:0 8px 24px rgba(45,31,42,.18);font:600 14px/1.5 sans-serif;';
+            document.body.appendChild(toast);
+            window.setTimeout(function () {
+                toast.remove();
+            }, 3500);
+        }
+
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', showWelcome);
+        } else {
+            showWelcome();
+        }
+    })();
+    </script>
+
     <link rel="stylesheet" href="/assets/css/style.css?v=<?php echo LM_VERSION; ?>">
     <link rel="stylesheet" href="/assets/css/design-system.css?v=<?php echo LM_VERSION; ?>">
     <link rel="stylesheet" href="/assets/css/theme-refresh.css?v=<?php echo LM_VERSION; ?>">
@@ -88,6 +148,10 @@ if ($siteBackground !== '') {
     <?php endif; ?>
 </head>
 <body class="<?php echo e($bodyClasses); ?>"<?php echo $bodyStyle !== '' ? ' style="' . e($bodyStyle) . '"' : ''; ?><?php echo !empty($articleViewId) ? ' data-article-id="' . (int)$articleViewId . '"' : ''; ?>>
+    <a class="opensource-corner" href="https://github.com/wemebabo57-a11y/linmeng-blog" target="_blank" rel="noopener noreferrer" aria-label="本站已开源，在 GitHub 查看项目">
+        <svg aria-hidden="true" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 22v-4a4.8 4.8 0 0 0-1-3.5c3 0 6-2 6-5.5.08-1.25-.27-2.48-1-3.5.28-1.15.28-2.35 0-3.5 0 0-1 0-3 1.5-2.64-.5-5.36-.5-8 0C6 2 5 2 5 2c-.3 1.15-.3 2.35 0 3.5A5.403 5.403 0 0 0 4 9c0 3.5 3 5.5 6 5.5-.39.49-.68 1.05-.85 1.65-.17.6-.22 1.23-.15 1.85v4"/><path d="M9 18c-4.51 2-5-2-7-2"/></svg>
+        <span>本站已开源</span>
+    </a>
     <?php if ($currentPage === 'home'): ?>
     <!-- 首页保留少量装饰，详情和工具页不再承担持续动画开销。 -->
     <div class="sakura-container" aria-hidden="true">
