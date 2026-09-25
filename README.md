@@ -6,10 +6,62 @@
 
 [![GitHub](https://img.shields.io/static/v1?label=GitHub&message=linmeng-blog&color=181717&logo=github)](https://github.com/wemebabo57-a11y/linmeng-blog)
 [![演示站](https://img.shields.io/badge/演示站-kslinmeng.cn-6366f1?logo=googlechrome&logoColor=white)](https://kslinmeng.cn/)
+[![Release](https://img.shields.io/github/v/release/wemebabo57-a11y/linmeng-blog?color=6366f1&label=最新版本)](https://github.com/wemebabo57-a11y/linmeng-blog/releases)
 ![License](https://img.shields.io/badge/License-MIT-blue)
 ![PHP](https://img.shields.io/badge/PHP-%E2%89%A57.4-777bb4)
 ![MySQL](https://img.shields.io/badge/MySQL-5.7%2B-4479a1)
 ![NoFramework](https://img.shields.io/badge/Framework-原生PHP-4f46e1)
+
+---
+
+## ⚡ 快速开始：我该下载哪个？
+
+**本项目源码按版本号归档在 [`src/`](src/) 目录，每个版本一个完整可部署的文件夹。**
+
+| 你的情况 | 该怎么做 |
+|----------|----------|
+| 想搭建自己的博客 | 用**最新版** → [`src/v2.4.2/`](src/v2.4.2/) |
+| 想升级已有站点 | 到 [Releases](https://github.com/wemebabo57-a11y/linmeng-blog/releases) 下载新版本 zip |
+| 想找回旧版本 | 在 [`src/`](src/) 里找对应版本号目录，或到 Releases 下载历史 tag |
+
+### 三步部署
+
+**第 1 步｜拿到最新版源码**
+
+- 直接下载：到 [Releases](https://github.com/wemebabo57-a11y/linmeng-blog/releases) 下载 `linmeng-blog-v2.4.2.zip`
+- 或用 Git：
+
+```bash
+git clone --depth 1 https://github.com/wemebabo57-a11y/linmeng-blog.git
+# 站点源码位于 src/v2.4.2/
+```
+
+**第 2 步｜上传哪个文件夹？**
+
+> 📌 **把 `src/版本号/` 这个文件夹「里面的全部内容」上传到网站根目录。**
+
+```
+仓库里的位置                          上传到服务器后
+─────────────────────────────────    ─────────────────────────
+src/v2.4.2/index.php          ───►   网站根目录/index.php
+src/v2.4.2/includes/          ───►   网站根目录/includes/
+src/v2.4.2/setup/             ───►   网站根目录/setup/
+src/v2.4.2/admin/             ───►   网站根目录/admin/
+```
+
+✅ 正确：服务器根目录下能直接看到 `index.php`
+❌ 错误：变成 `网站根目录/v2.4.2/index.php`（多套了一层，把 `v2.4.2` 这层去掉）
+
+**第 3 步｜跑安装向导**
+
+浏览器访问 `http://你的域名/setup/`，按提示完成数据库与管理员配置。
+
+> ⚠️ **安装完成后务必删除 `setup/` 目录**，防止他人重复安装。
+
+详细步骤（含手动安装、Nginx 配置、升级指南）见：
+- 📘 [各版本详细说明](src/v2.4.2/README.md)
+- 📗 [部署指南](docs/DEPLOY.md)
+- 📙 [版本索引](src/README.md)
 
 ---
 
@@ -74,137 +126,34 @@
 
 ---
 
-## 🚀 快速安装（推荐）
+## 🗂 仓库结构
 
-### 1. 获取代码
-
-```bash
-git clone https://github.com/wemebabo57-a11y/linmeng-blog.git
-# 或直接下载 ZIP 上传到服务器
-```
-
-将代码上传到网站根目录。
-
-### 2. 运行安装向导
-
-浏览器访问：
-
-```
-http://你的域名/setup/
-```
-
-向导会自动完成 **环境检测**，然后引导你：
-
-1. **配置数据库** —— 填写主机、库名、用户名、密码（可选「数据库不存在时自动创建」）
-2. **设置站点与管理员** —— 站点 URL、站点名称、首个管理员账号密码
-3. **一键安装** —— 自动生成 `.env`、导入数据库结构、创建管理员、写入默认设置
-
-> 安装向导会自动生成 `SECRET_KEY`（用于加密 API Key 等敏感数据）。**该密钥一经设定请勿变更**，否则已加密的数据无法解密。
-
-### 3. 删除安装目录（重要）
-
-安装完成后，向导会提示你删除 `setup/` 目录。请务必删除，防止他人重复执行安装：
-
-```bash
-rm -rf setup/
-```
-
-（向导界面也提供「删除 setup 目录」按钮，一键完成。）
-
-### 4. 登录后台
-
-访问 `你的域名/login.php`，用刚才设置的管理员账号登录，进入 `你的域名/admin/` 开始发表文章与配置站点。
-
----
-
-## 🔧 手动配置（可选）
-
-如果服务器因权限等原因无法使用安装向导，也可手动配置：
-
-```bash
-cp .env.example .env
-```
-
-编辑 `.env` 填入真实值：
-
-```ini
-DB_HOST=localhost
-DB_NAME=你的库名
-DB_USER=你的用户名
-DB_PASS=你的密码
-SECRET_KEY=                    # 用 php -r "echo bin2hex(random_bytes(32));" 生成
-SITE_URL=https://你的域名
-SITE_PATH=                     # 子目录部署时填写，如 /blog；根目录留空
-LM_TRUST_PROXY=false
-```
-
-然后导入数据库结构：
-
-```bash
-mysql -u 用户名 -p 你的库名 < setup/schema.sql
-```
-
-最后手动创建管理员：参考 `includes/Security.php` 的密码哈希方式，或直接在数据库执行（将 `你的密码哈希` 替换为 `php -r "echo password_hash('你的密码', PASSWORD_DEFAULT);"` 的输出）：
-
-```sql
-INSERT INTO lm_admin (username, password, email, nickname, role, status, created_at)
-VALUES ('admin', '你的密码哈希', 'admin@example.com', 'admin', 'admin', 1, NOW());
-```
-
-并创建安装标记文件 `includes/config_installed.php`（内容可为空 PHP 文件）。
-
----
-
-## 🗂 目录结构
+本仓库是**源码归档仓库**，根目录只放文档，实际站点代码按版本号存在 `src/` 下。
 
 ```
 .
-├── admin/                 # 后台管理
-│   ├── template/           #   后台模板
-│   ├── article-edit.php    #   文章编辑
-│   ├── articles.php        #   文章列表
-│   ├── settings.php        #   站点设置
-│   ├── users.php           #   用户管理
-│   └── ...
-├── api/                    # 前端接口
-│   ├── like.php            #   点赞
-│   ├── visit.php           #   访问统计
-│   ├── ai-summary.php      #   AI 摘要
-│   ├── github-upload.php   #   图床上传
-│   └── ...
-├── assets/                 # 静态资源
-│   ├── css/                #   样式（含 design-system.css）
-│   ├── js/                 #   脚本
-│   ├── images/             #   默认图片
-│   └── uploads/            #   用户上传（运行时生成，已 gitignore）
-├── docs/
-│   └── nginx.example.conf  # Nginx 配置示例
-├── includes/               # 核心库
-│   ├── config.php          #   配置入口（读取 .env）
-│   ├── Database.php        #   PDO 数据库封装
-│   ├── Security.php       #   安全：CSRF/XSS/限流/加密
-│   ├── functions.php       #   公共函数
-│   ├── AiProvider.php      #   AI Provider
-│   └── Markdown.php        #   Markdown 解析
-├── setup/                  # ⭐ 安装向导（安装后删除）
-│   ├── index.php           #   向导主程序
-│   ├── schema.sql          #   数据库结构
-│   ├── style.css           #   向导样式
-│   └── .htaccess           #   保护非 PHP 资源
-├── template/               # 前台模板
-│   ├── header.php
-│   ├── sidebar.php
-│   └── bottom-widgets.php
-├── .env.example            # 配置模板
-├── .htaccess               # Apache 兼容规则
-├── index.php               # 首页
-├── article.php             # 文章页
-├── login.php / register.php
-├── guestbook.php           # 留言板
-├── gallery.php             # 相册
-├── rss.php                 # RSS
-└── ...                     # 其它页面
+├── README.md              # 本文件：项目介绍 + 该用哪个版本
+├── LICENSE                # MIT 许可证
+├── src/                   # ⭐ 源码，按版本号归档
+│   ├── README.md          #   版本索引
+│   └── v2.4.2/            #   v2.4.2 完整可部署源码
+│       ├── README.md      #     该版本详细说明
+│       ├── index.php      #     首页
+│       ├── admin/         #     后台
+│       ├── api/           #     接口
+│       ├── assets/        #     静态资源
+│       ├── includes/      #     核心库
+│       ├── setup/         #     安装向导
+│       └── template/      #     前台模板
+└── docs/                  # 文档
+    ├── DEPLOY.md          #   部署与升级指南
+    ├── CHANGELOG.md       #   版本变更记录
+    ├── nginx.example.conf #   Nginx 配置示例
+    ├── cdn-caching.md     #   CDN 缓存策略
+    └── migrations/        #   数据库迁移脚本
 ```
+
+> 🚨 **重要**：`src/` 不是网站目录。**不要把 `src/` 整个上传到服务器**，要上传 `src/<版本号>/` 里面的内容。
 
 ---
 
@@ -212,13 +161,13 @@ VALUES ('admin', '你的密码哈希', 'admin@example.com', 'admin', 'admin', 1,
 
 ### Nginx（推荐）
 
-参考 `docs/nginx.example.conf`，核心要点：
+参考 [`docs/nginx.example.conf`](docs/nginx.example.conf)，核心要点：
 
 ```nginx
 server {
     listen 443 ssl http2;
     server_name 你的域名;
-    root /www/wwwroot/你的站点目录;
+    root /www/wwwroot/你的站点目录;      # 指向你上传的站点根目录
     index index.php;
 
     # 隐藏敏感文件
@@ -245,7 +194,7 @@ server {
 
 ### Apache
 
-项目自带 `.htaccess`，已包含敏感文件拦截、核心目录保护、安全头、错误页等规则，通常无需额外配置（需开启 `mod_rewrite`）。
+站点自带 `.htaccess`，已包含敏感文件拦截、核心目录保护、安全头、错误页等规则，通常无需额外配置（需开启 `mod_rewrite`）。
 
 ---
 
@@ -278,16 +227,19 @@ server {
 
 ## 🤝 参与贡献
 
-欢迎提交 Issue 与 PR。开发时：
+欢迎提交 Issue 与 PR。开发时请**直接在最新版本目录中修改**（当前为 `src/v2.4.2/`）：
 
 ```bash
-# 克隆并开发
 git clone https://github.com/wemebabo57-a11y/linmeng-blog.git
+cd linmeng-blog/src/v2.4.2      # ← 站点代码在这里
 # 修改代码后请确保：
 #   - 不要在代码中硬编码任何密钥 / 密码 / Token
 #   - 敏感配置一律走 .env 或 lm_setting 数据表
 #   - 新增数据表请同步更新 setup/schema.sql
+#   - 同步提升 includes/config.php 中的 LM_VERSION
 ```
+
+> 修改完成后，如果该版本已发布，请把改动同步到 `src/` 下的新版本目录，而不是直接改历史版本。
 
 ---
 

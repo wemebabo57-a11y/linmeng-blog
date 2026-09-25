@@ -5,21 +5,22 @@
 .user.ini
 
 # 安装标记
-/includes/config_installed.php
+src/*/includes/config_installed.php
 
 # 安装目录产生的锁定文件
-/setup/.installed
+src/*/setup/.installed
 
 # 用户上传内容
-/assets/uploads/*
-!/assets/uploads/index.html
+src/*/assets/uploads/*
+!src/*/assets/uploads/index.html
 
 # 日志
 *.log
-/logs/
+src/*/logs/
+logs/
 
 # 页面缓存（PageCache 运行时生成）
-/cache/
+src/*/cache/
 
 # IDE / 编辑器
 .vscode/
@@ -30,9 +31,9 @@
 Thumbs.db
 
 # 构建产物（若未来引入构建工具）
-/node_modules/
-/dist/
-/build/
+node_modules/
+dist/
+build/
 
 # Trae 计划/文档目录（本地工作产物）
-/.trae/
+.trae/
