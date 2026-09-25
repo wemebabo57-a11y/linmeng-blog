@@ -1,8 +1,10 @@
 # 林梦博客 v2.4.2
 
-> 当前推荐版本 ｜ 程序内版本号 `LM_VERSION = 2.4.2`（定义于 `includes/config.php`）
+> 程序内版本号 `LM_VERSION = 2.4.2`（定义于 `includes/config.php`）
 
-本目录是**完整可部署的站点根目录**。把本目录内的全部文件上传到网站根目录即可运行。
+一个基于原生 PHP + MySQL 的轻量博客系统，不依赖任何框架，自带可视化安装向导。
+
+本目录是**完整可部署的站点根目录**——把本目录内的全部文件上传到网站根目录即可运行。
 
 ---
 
@@ -12,13 +14,13 @@
 
 **方式一：整包下载（推荐）**
 
-到 [Releases](https://github.com/wemebabo57-a11y/linmeng-blog/releases) 下载 `linmeng-blog-v2.4.2.zip`，解压后得到站点文件。
+到 [Releases](https://github.com/wemebabo57-a11y/linmeng-blog/releases) 下载对应版本的 zip 源码包，解压即可。
 
-**方式二：只取本目录**
+**方式二：从仓库取出**
 
 ```bash
 git clone --depth 1 https://github.com/wemebabo57-a11y/linmeng-blog.git
-# 站点文件在 linmeng-blog/src/v2.4.2/
+# 站点文件在 linmeng-blog/src/ 下对应的版本目录里
 ```
 
 ### 2. 上传
@@ -36,7 +38,7 @@ git clone --depth 1 https://github.com/wemebabo57-a11y/linmeng-blog.git
 └── ...
 ```
 
-> ⚠️ 常见错误：上传成了 `网站根目录/v2.4.2/index.php`。这样访问域名会 404，把 `v2.4.2` 这一层去掉即可。
+> ⚠️ 常见错误：上传成了 `网站根目录/v2.4.2/index.php`。这样访问域名会 404，把版本号这一层去掉即可。
 
 ### 3. 运行安装向导
 
