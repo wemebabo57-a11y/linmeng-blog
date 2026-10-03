@@ -1,0 +1,1073 @@
+/**
+ * 博客 v3.0 - 主JavaScript文件
+ * 支持深色/浅色主题切换、多图上传、图片灯箱等功能
+ * 重点：代码健壮性、错误处理、性能优化
+ */
+
+'use strict';
+
+// 全局降低动效偏好：CSS 只能压缩动画时长，JS 侧的定时器/滚动动画需据此跳过。
+var prefersReducedMotion = !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+if (window.matchMedia) {
+    var motionQuery = window.matchMedia('(prefers-reduced-motion: reduce)');
+    var onMotionChange = function (e) { prefersReducedMotion = e.matches; };
+    if (motionQuery.addEventListener) motionQuery.addEventListener('change', onMotionChange);
+    else if (motionQuery.addListener) motionQuery.addListener(onMotionChange);
+}
+
+// 平滑滚动行为：降低动效偏好下退化为瞬时跳转。
+function appScrollBehavior() {
+    return prefersReducedMotion ? 'auto' : 'smooth';
+}
+
+// 弹层共用滚动锁：多个弹层同时存在时，只有最后一个关闭才恢复页面滚动。
+(function () {
+    let lockCount = 0;
+    let previousOverflow = '';
+
+    window.appLockScroll = function () {
+        if (!document.body) return;
+        if (lockCount === 0) previousOverflow = document.body.style.overflow;
+        lockCount += 1;
+        document.body.style.overflow = 'hidden';
+    };
+
+    window.appUnlockScroll = function () {
+        if (!document.body || lockCount === 0) return;
+        lockCount -= 1;
+        if (lockCount === 0) document.body.style.overflow = previousOverflow;
+    };
+})();
+
+// 全局错误处理
+window.addEventListener('error', function(e) {
+    console.warn('[全局] 未捕获的错误:', e.error);
+});
+
+window.addEventListener('unhandledrejection', function(e) {
+    console.warn('[全局] 未处理的 Promise 拒绝:', e.reason);
+});
+
+// ==================== 图片直链自动重试 ====================
+// 外链图片（背景图/头像/文章图片直链等）可能因网络抖动、图床瞬时故障、防盗链误判等加载失败，
+// 这里统一捕获失败并自动重试，避免裂图“永久定格”：
+// 1. <img>：监听捕获阶段的 error 事件（error 不冒泡，但捕获阶段会经过 document），
+//    可覆盖后续动态插入的图片（评论头像、灯箱、懒加载等），无需 MutationObserver。
+// 2. CSS 背景图（站点背景/首页 hero/内联背景）：用 Image() 预加载探测，
+//    失败后退避重试；成功后强制重绘元素，让背景使用缓存中的图片。
+// 所有重试均有次数上限，死链不会造成无限请求。
+(function () {
+    var IMG_RETRY_MAX = 2;               // <img> 最多重试次数
+    var IMG_RETRY_DELAYS = [1500, 5000]; // 每次重试的退避延迟(ms)
+    var BG_RETRY_MAX = 3;                // 背景图最多重试次数
+    var BG_RETRY_DELAYS = [2000, 6000, 12000];
+
+    function isRetryableSrc(src) {
+        return !!src && src.indexOf('data:') !== 0 && src.charAt(0) !== '#';
+    }
+
+    function scheduleImgRetry(img) {
+        var attempt = parseInt(img.getAttribute('data-app-retry') || '0', 10) || 0;
+        if (attempt >= IMG_RETRY_MAX) return;
+        if (img.getAttribute('data-app-pending') === '1') return; // 已有待执行的重试
+        var src = img.getAttribute('src') || '';
+        if (!isRetryableSrc(src)) return; // 空 src（如灯箱占位）与 data URI 不重试
+        img.setAttribute('data-app-pending', '1');
+        var next = attempt + 1;
+        var delay = IMG_RETRY_DELAYS[Math.min(attempt, IMG_RETRY_DELAYS.length - 1)];
+        window.setTimeout(function () {
+            img.setAttribute('data-app-retry', String(next));
+            img.removeAttribute('data-app-pending');
+            img.src = src; // 重新赋值 src 触发重新请求（失败响应不会被缓存）
+        }, delay);
+    }
+
+    document.addEventListener('error', function (e) {
+        var target = e.target;
+        if (target && target.tagName === 'IMG') {
+            scheduleImgRetry(target);
+        }
+    }, true);
+
+    // 回扫：defer 脚本执行晚于解析期的失败事件，补处理监听挂载前已失败的图片。
+    // complete 且 naturalWidth 为 0 表示当前 src 加载失败；未设置 src 的懒加载图会被 src 判断跳过。
+    function sweepBrokenImages() {
+        var imgs = document.images;
+        for (var i = 0; i < imgs.length; i++) {
+            var img = imgs[i];
+            if (img.complete && img.naturalWidth === 0) {
+                scheduleImgRetry(img);
+            }
+        }
+    }
+    sweepBrokenImages();
+
+    // 短暂置空再还原，强制浏览器重新应用背景图（命中探测请求留下的缓存）。
+    // 置空与还原之间强制重排，确保中间态被提交，使还原成为一次真实的样式变更。
+    function forceBgRepaint(el) {
+        var inlineValue = el.style.backgroundImage;
+        el.style.backgroundImage = 'none';
+        void el.offsetWidth;
+        if (inlineValue) {
+            el.style.backgroundImage = inlineValue;
+        } else {
+            el.style.removeProperty('background-image');
+        }
+    }
+
+    function retryBackground(els, url) {
+        var attempt = 0;
+        var preload = function () {
+            var probe = new Image();
+            probe.onload = function () {
+                els.forEach(function (el) { forceBgRepaint(el); });
+            };
+            probe.onerror = function () {
+                if (attempt >= BG_RETRY_MAX) return;
+                attempt += 1;
+                window.setTimeout(preload, BG_RETRY_DELAYS[Math.min(attempt - 1, BG_RETRY_DELAYS.length - 1)]);
+            };
+            probe.src = url;
+        };
+        preload();
+    }
+
+    function initBackgroundRetry() {
+        // 覆盖：站点背景（body 上的 CSS 变量，computed style 已解析）、首页 hero、
+        // 以及所有带内联 background-image 的元素（如说说背景等直链）。
+        var elsByUrl = Object.create(null);
+        var candidates = [document.body];
+        var hero = document.querySelector('.home-hero');
+        if (hero) candidates.push(hero);
+        var inlineBgEls = document.querySelectorAll('[style*="background-image"]');
+        Array.prototype.forEach.call(inlineBgEls, function (el) { candidates.push(el); });
+
+        candidates.forEach(function (el) {
+            if (!el) return;
+            var bg = '';
+            try { bg = window.getComputedStyle(el).backgroundImage || ''; } catch (err) { return; }
+            var re = /url\((['"]?)([^'")]+)\1\)/g;
+            var m;
+            while ((m = re.exec(bg)) !== null) {
+                var url = m[2];
+                if (!isRetryableSrc(url)) continue;
+                if (!elsByUrl[url]) elsByUrl[url] = [];
+                if (elsByUrl[url].indexOf(el) === -1) elsByUrl[url].push(el);
+            }
+        });
+
+        Object.keys(elsByUrl).forEach(function (url) {
+            retryBackground(elsByUrl[url], url);
+        });
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', initBackgroundRetry);
+    } else {
+        initBackgroundRetry();
+    }
+})();
+
+document.addEventListener('DOMContentLoaded', function() {
+    // ==================== 页面加载浮现 ====================
+    try {
+        document.body.classList.add('loaded');
+    } catch (e) {
+        console.warn('[加载] 添加 loaded 类失败:', e);
+    }
+
+    // ==================== 主题切换 ====================
+    try {
+        initTheme();
+    } catch (e) {
+        console.warn('[主题] 初始化失败:', e);
+    }
+    
+    // ==================== 后台移动端菜单切换 ====================
+    try {
+        const adminMenuToggle = document.getElementById('admin-menu-toggle');
+        const adminSidebar = document.getElementById('admin-sidebar');
+        if (adminMenuToggle && adminSidebar) {
+            // 显隐交给 CSS（admin-theme.css 的 ≤1024 断点），这里只管交互
+            adminMenuToggle.addEventListener('click', function() {
+                adminSidebar.classList.toggle('open');
+            });
+            document.addEventListener('click', function(e) {
+                if (!adminSidebar.contains(e.target) && !adminMenuToggle.contains(e.target)) {
+                    adminSidebar.classList.remove('open');
+                }
+            });
+        }
+    } catch (e) {
+        console.warn('[后台菜单] 初始化失败:', e);
+    }
+    
+    // ==================== 图片懒加载 ====================
+    try {
+        const lazyImages = document.querySelectorAll('img[data-src]');
+        if (lazyImages.length > 0) {
+            if ('IntersectionObserver' in window) {
+                const imageObserver = new IntersectionObserver((entries, observer) => {
+                    entries.forEach(entry => {
+                        if (entry.isIntersecting) {
+                            const img = entry.target;
+                            img.src = img.dataset.src;
+                            img.removeAttribute('data-src');
+                            observer.unobserve(img);
+                        }
+                    });
+                }, {
+                    rootMargin: '50px 0px',
+                    threshold: 0.01
+                });
+                
+                lazyImages.forEach(img => imageObserver.observe(img));
+            } else {
+                // 降级方案
+                lazyImages.forEach(img => {
+                    img.src = img.dataset.src;
+                    img.removeAttribute('data-src');
+                });
+            }
+        }
+    } catch (e) {
+        console.warn('[图片懒加载] 初始化失败:', e);
+    }
+    
+    // ==================== 自动消失的消息提示 ====================
+    try {
+        // 成功/信息提示可自动收起；错误和警告必须保留，避免用户错过失败原因。
+        const alerts = document.querySelectorAll('.alert-success:not(.alert-float), .alert-info:not(.alert-float)');
+        alerts.forEach(alert => {
+            // 跳过初始隐藏的 alert（由 JS 控制显示/隐藏的，不应被自动移除）
+            if (alert.style.display === 'none' || getComputedStyle(alert).display === 'none') return;
+            setTimeout(() => {
+                alert.style.opacity = '0';
+                alert.style.transition = 'opacity 0.5s';
+                setTimeout(() => {
+                    if (alert.parentNode) {
+                        alert.remove();
+                    }
+                }, 500);
+            }, 5000);
+        });
+    } catch (e) {
+        console.warn('[消息提示] 初始化失败:', e);
+    }
+    
+    // ==================== 二维码弹窗 ====================
+    const wechatBtn = document.querySelector('.wechat-btn');
+    const wechatModal = document.querySelector('.wechat-modal');
+
+    if (wechatBtn && wechatModal) {
+        let wechatTrigger = null;
+
+        function openWechat() {
+            wechatTrigger = document.activeElement;
+            wechatModal.classList.add('active');
+            wechatModal.setAttribute('aria-hidden', 'false');
+            window.appLockScroll();
+            const closeBtn = wechatModal.querySelector('.modal-close, .wechat-close');
+            if (closeBtn) closeBtn.focus();
+        }
+
+        function closeWechat() {
+            if (!wechatModal.classList.contains('active')) return;
+            wechatModal.classList.remove('active');
+            wechatModal.setAttribute('aria-hidden', 'true');
+            window.appUnlockScroll();
+            if (wechatTrigger && typeof wechatTrigger.focus === 'function') wechatTrigger.focus();
+            wechatTrigger = null;
+        }
+
+        wechatBtn.addEventListener('click', function(e) {
+            e.preventDefault();
+            openWechat();
+        });
+
+        wechatModal.addEventListener('click', function(e) {
+            if (e.target === wechatModal) closeWechat();
+        });
+
+        const wechatCloseBtn = wechatModal.querySelector('.modal-close, .wechat-close');
+        if (wechatCloseBtn) wechatCloseBtn.addEventListener('click', closeWechat);
+        wechatModal.addEventListener('app-close', closeWechat);
+    }
+    
+    // ==================== 评论回复 ====================
+    // 已移除：article.php 中不存在 .reply-btn 元素，原绑定属于死代码。
+
+    // ==================== 表单验证 ====================
+    const forms = document.querySelectorAll('form[data-validate]');
+    forms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            const requiredFields = form.querySelectorAll('[required]');
+            let valid = true;
+            
+            requiredFields.forEach(field => {
+                if (!field.value.trim()) {
+                    valid = false;
+                    field.style.borderColor = 'var(--danger-color)';
+                    
+                    let errorHint = field.parentNode.querySelector('.error-hint');
+                    if (!errorHint) {
+                        errorHint = document.createElement('div');
+                        errorHint.className = 'error-hint';
+                        errorHint.style.color = 'var(--danger-color)';
+                        errorHint.style.fontSize = '0.8rem';
+                        errorHint.style.marginTop = '4px';
+                        field.parentNode.appendChild(errorHint);
+                    }
+                    errorHint.textContent = '此字段不能为空';
+                } else {
+                    field.style.borderColor = '';
+                    const errorHint = field.parentNode.querySelector('.error-hint');
+                    if (errorHint) errorHint.remove();
+                }
+            });
+            
+            if (!valid) {
+                e.preventDefault();
+            }
+        });
+    });
+    
+    // ==================== 密码强度检测 ====================
+    const passwordInputs = document.querySelectorAll('input[data-strength]');
+    passwordInputs.forEach(input => {
+        input.addEventListener('input', function() {
+            const password = this.value;
+            const strengthBar = document.querySelector('#password-strength');
+            
+            if (!strengthBar) return;
+            
+            let strength = 0;
+            if (password.length >= 8) strength++;
+            if (/[A-Z]/.test(password)) strength++;
+            if (/[a-z]/.test(password)) strength++;
+            if (/[0-9]/.test(password)) strength++;
+            if (/[^A-Za-z0-9]/.test(password)) strength++;
+            
+            const colors = ['#ef4444', '#ef4444', '#f59e0b', '#84cc16', '#10b981'];
+            const texts = ['极弱', '弱', '一般', '强', '极强'];
+            
+            strengthBar.style.width = (strength / 5 * 100) + '%';
+            strengthBar.style.backgroundColor = colors[strength - 1] || '#ef4444';
+            strengthBar.textContent = texts[strength - 1] || '极弱';
+        });
+    });
+    
+    // ==================== 图片预览 ====================
+    const imageInputs = document.querySelectorAll('input[type="file"][data-preview]');
+    imageInputs.forEach(input => {
+        input.addEventListener('change', function() {
+            const previewId = this.dataset.preview;
+            const preview = document.querySelector('#' + previewId);
+            
+            if (preview && this.files && this.files[0]) {
+                const reader = new FileReader();
+                reader.onload = function(e) {
+                    preview.src = e.target.result;
+                    preview.style.display = 'block';
+                };
+                reader.readAsDataURL(this.files[0]);
+            }
+        });
+    });
+    
+    // ==================== 多图上传预览 ====================
+    initMultiUpload();
+    
+    // ==================== 图片灯箱 ====================
+    initLightbox();
+    
+    // ==================== 自动生成文章目录 ====================
+    // 目录生成与高亮统一由 ui-enhancements.js 处理；这里只负责生成目录。
+
+    // ==================== 平滑滚动 ====================
+    document.querySelectorAll('a[href^="#"]').forEach(anchor => {
+        anchor.addEventListener('click', function(e) {
+            const href = this.getAttribute('href');
+            if (!href || href === '#' || this.closest('.toc-list')) return;
+            const target = document.querySelector(href);
+            if (target) {
+                e.preventDefault();
+                target.scrollIntoView({ behavior: appScrollBehavior(), block: 'start' });
+            }
+        });
+    });
+    
+    // ==================== AJAX表单提交 ====================
+    const ajaxForms = document.querySelectorAll('form[data-ajax]');
+    ajaxForms.forEach(form => {
+        form.addEventListener('submit', function(e) {
+            e.preventDefault();
+            
+            const submitBtn = form.querySelector('button[type="submit"]');
+            const originalText = submitBtn ? submitBtn.textContent : '';
+            
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = '提交中...';
+            }
+            
+            const formData = new FormData(form);
+            
+            fetch(form.action, {
+                method: form.method || 'POST',
+                body: formData,
+                headers: {
+                    'X-Requested-With': 'XMLHttpRequest'
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    showMessage(data.message || '操作成功', 'success');
+                    if (data.redirect) {
+                        setTimeout(() => window.location.href = data.redirect, 1000);
+                    }
+                    if (data.reload) {
+                        setTimeout(() => window.location.reload(), 1000);
+                    }
+                } else {
+                    showMessage(data.message || '操作失败', 'error');
+                }
+            })
+            .catch(error => {
+                showMessage('网络错误，请稍后重试', 'error');
+            })
+            .finally(() => {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = originalText;
+                }
+            });
+        });
+    });
+    
+    // ==================== 文章点赞 ====================
+    const likeBtns = document.querySelectorAll('.like-btn');
+    likeBtns.forEach(btn => {
+        btn.addEventListener('click', function() {
+            const articleId = this.dataset.articleId;
+            if (!articleId || this.disabled) return;
+            this.disabled = true;
+
+            const csrfInput = document.querySelector('meta[name="csrf-token"]');
+            const csrfToken = csrfInput ? csrfInput.getAttribute('content') : '';
+            const csrfNameMeta = document.querySelector('meta[name="csrf-token-name"]');
+            const csrfName = csrfNameMeta ? csrfNameMeta.getAttribute('content') : 'app_csrf_token';
+
+            fetch('/api/like.php', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/x-www-form-urlencoded',
+                    'X-Requested-With': 'XMLHttpRequest'
+                },
+                body: 'article_id=' + encodeURIComponent(articleId) + '&' + encodeURIComponent(csrfName) + '=' + encodeURIComponent(csrfToken)
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    this.classList.toggle('active', data.liked === true);
+                    this.setAttribute('aria-pressed', data.liked === true ? 'true' : 'false');
+                    const countEl = this.querySelector('.like-count');
+                    if (countEl) countEl.textContent = data.count;
+                    showMessage(data.message, 'success');
+                } else {
+                    showMessage(data.message, 'error');
+                }
+            })
+            .catch(() => showMessage('操作失败', 'error'))
+            .finally(() => {
+                this.disabled = false;
+            });
+        });
+    });
+
+    // ==================== 滚动视差 ====================
+    function initParallax() {
+        if (prefersReducedMotion || window.innerWidth < 768) return;
+        var parallaxEls = document.querySelectorAll('[data-parallax]');
+        if (!parallaxEls.length) return;
+        window.addEventListener('scroll', function() {
+            var scrollY = window.pageYOffset;
+            parallaxEls.forEach(function(el) {
+                var speed = parseFloat(el.dataset.parallax) || 0.3;
+                var rect = el.getBoundingClientRect();
+                var offset = (rect.top + scrollY) * speed * 0.1;
+                el.style.transform = 'translateY(' + (-scrollY * speed * 0.05) + 'px)';
+            });
+        }, { passive: true });
+    }
+    initParallax();
+
+    // ==================== 数字滚动动画 ====================
+    function initCountUp() {
+        var counters = document.querySelectorAll('[data-count]');
+        if (!counters.length) return;
+        var observer = new IntersectionObserver(function(entries) {
+            entries.forEach(function(entry) {
+                if (entry.isIntersecting) {
+                    var target = parseInt(entry.target.dataset.count, 10) || 0;
+                    if (prefersReducedMotion) {
+                        entry.target.textContent = target;
+                        observer.unobserve(entry.target);
+                        return;
+                    }
+                    var startTime = performance.now();
+                    var duration = 1200;
+                    function update(currentTime) {
+                        var elapsed = currentTime - startTime;
+                        var progress = Math.min(elapsed / duration, 1);
+                        var eased = 1 - Math.pow(1 - progress, 4);
+                        entry.target.textContent = Math.floor(target * eased);
+                        if (progress < 1) requestAnimationFrame(update);
+                        else entry.target.textContent = target;
+                    }
+                    requestAnimationFrame(update);
+                    observer.unobserve(entry.target);
+                }
+            });
+        }, { threshold: 0.5 });
+        counters.forEach(function(c) { observer.observe(c); });
+    }
+    initCountUp();
+
+    // ==================== 滚动渐入增强 ====================
+    // 已移除：原 initScrollReveal 通过 inline style 预隐藏 .article-item/.widget/.card，
+    // 若 IntersectionObserver 回调延迟或失败会导致白屏。
+    // 现统一由 design-system.css 的 `html.js .article-item/.reveal-item` 类隐藏，
+    // 并由 ui-enhancements.js 添加 .is-revealed 类来揭示；
+    // .widget/.card 默认可见，不参与预隐藏，避免 JS 失败导致内容不可见。
+
+    // ==================== 鼠标跟随光效 ====================
+    function initCardGlow() {
+        // 触摸设备没有真实 hover，光效只会造成无谓重绘
+        if (prefersReducedMotion || window.innerWidth < 768 || 'ontouchstart' in window) return;
+        document.querySelectorAll('.card, .widget').forEach(function(card) {
+            var glow = document.createElement('div');
+            glow.className = 'card-glow';
+            glow.style.cssText = 'position:absolute;top:0;left:0;right:0;bottom:0;pointer-events:none;z-index:0;border-radius:inherit;opacity:0;transition:opacity 0.4s ease;background:radial-gradient(circle 300px at 50% 50%, var(--primary-glow), transparent 70%);';
+            card.style.position = 'relative';
+            card.style.overflow = 'hidden';
+            card.appendChild(glow);
+
+            card.addEventListener('mousemove', function(e) {
+                var rect = card.getBoundingClientRect();
+                var x = e.clientX - rect.left;
+                var y = e.clientY - rect.top;
+                glow.style.background = 'radial-gradient(circle 300px at ' + x + 'px ' + y + 'px, var(--primary-glow), transparent 70%)';
+                glow.style.opacity = '0.06';
+            });
+            card.addEventListener('mouseleave', function() {
+                glow.style.opacity = '0';
+            });
+        });
+    }
+    initCardGlow();
+
+    // ==================== 打字机效果 ====================
+    function initTypewriter() {
+        var elements = document.querySelectorAll('[data-typewriter]');
+        elements.forEach(function(el) {
+            var text = el.dataset.typewriter || el.textContent;
+            if (prefersReducedMotion) {
+                el.textContent = text;
+                el.style.borderRight = 'none';
+                return;
+            }
+            el.textContent = '';
+            el.style.borderRight = '2px solid var(--primary-color)';
+            var i = 0;
+            function type() {
+                if (i < text.length) {
+                    el.textContent += text.charAt(i);
+                    i++;
+                    setTimeout(type, 50 + Math.random() * 50);
+                } else {
+                    setTimeout(function() { el.style.borderRight = 'none'; }, 1000);
+                }
+            }
+            // 延迟启动，等页面渲染完
+            setTimeout(type, 500);
+        });
+    }
+    initTypewriter();
+
+    // ==================== TOC滚动高亮 ====================
+    // 目录生成与高亮由 ui-enhancements.js 统一处理。
+
+    // ==================== 复制文章链接按钮（带 from=share 渠道标记） ====================
+    document.querySelectorAll('.copy-link-btn').forEach(function(btn) {
+        btn.addEventListener('click', function() {
+            var url = this.dataset.url || window.location.href;
+            try {
+                var u = new URL(url, window.location.origin);
+                if (!u.searchParams.get('from')) u.searchParams.set('from', 'share');
+                url = u.toString();
+            } catch (e) {}
+            copyToClipboard(url);
+        });
+    });
+
+    // ==================== 代码块复制按钮 ====================
+    function initCodeCopy() {
+        document.querySelectorAll('pre code').forEach(function(codeBlock) {
+            var pre = codeBlock.parentElement;
+            if (pre.querySelector('.code-copy-btn')) return;
+            var btn = document.createElement('button');
+            btn.className = 'code-copy-btn';
+            btn.textContent = '复制';
+            btn.addEventListener('click', function() {
+                var text = codeBlock.textContent;
+                navigator.clipboard.writeText(text).then(function() {
+                    btn.textContent = '已复制';
+                    setTimeout(function() { btn.textContent = '复制'; }, 2000);
+                }).catch(function() {
+                    btn.textContent = '失败';
+                    setTimeout(function() { btn.textContent = '复制'; }, 2000);
+                });
+            });
+            pre.style.position = 'relative';
+            pre.appendChild(btn);
+        });
+    }
+    initCodeCopy();
+
+    // ==================== 站点访问人数统计 ====================
+    (function initVisitorCounter() {
+        var storageKey = 'app_site_visitor_marked';
+        var thirtyDays = 30 * 24 * 60 * 60 * 1000;
+        // localStorage 在隐私模式/禁用存储时会抛错，读写都需要保护
+        var markedAt = null;
+        try {
+            markedAt = localStorage.getItem(storageKey);
+        } catch (e) {
+            markedAt = null;
+        }
+
+        if (markedAt && (Date.now() - parseInt(markedAt, 10)) < thirtyDays) {
+            return;
+        }
+
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+
+        fetch('/api/visit.php', {
+            method: 'POST',
+            headers: {
+                'X-CSRF-Token': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            credentials: 'same-origin'
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (data.success) {
+                try {
+                    localStorage.setItem(storageKey, Date.now().toString());
+                } catch (e) {
+                    // 存储不可用时仅跳过去重标记，不影响计数展示
+                }
+                document.querySelectorAll('.visitor-count').forEach(function(el) {
+                    el.textContent = data.count.toLocaleString();
+                    el.setAttribute('data-count', data.count);
+                });
+            }
+        })
+        .catch(function() {});
+    })();
+
+    // ==================== 文章浏览量异步上报 ====================
+    // 页面交给 CDN 缓存后，浏览量由前端上报（api/visit.php），
+    // 替代原先渲染时的同步 UPDATE，匿名缓存页同样计数。
+    (function initArticleViewReport() {
+        var articleId = document.body.getAttribute('data-article-id');
+        if (!articleId) {
+            return;
+        }
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        fetch('/api/visit.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                'X-CSRF-Token': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: 'article_id=' + encodeURIComponent(articleId),
+            credentials: 'same-origin'
+        }).catch(function() {});
+    })();
+
+    // ==================== 站点 PV 上报 ====================
+    // 每次页面加载上报一次 PV（api/visit.php 写入 app_visit_log 并累加 site_pv_total），
+    // 服务端按 IP 限流并过滤爬虫 UA。CDN 缓存的匿名页面同样计数。
+    (function initPvReport() {
+        var csrfMeta = document.querySelector('meta[name="csrf-token"]');
+        var csrfToken = csrfMeta ? csrfMeta.getAttribute('content') : '';
+        // 同一页面会话内的刷新不再重复上报，避免单用户连续刷新虚增 PV
+        var dedupeKey = 'app_pv_reported_' + location.pathname;
+        var reported = false;
+        try {
+            reported = sessionStorage.getItem(dedupeKey) === '1';
+        } catch (e) {
+            reported = false;
+        }
+        if (reported) return;
+        try {
+            sessionStorage.setItem(dedupeKey, '1');
+        } catch (e) {
+            // 存储不可用时仍上报
+        }
+        fetch('/api/visit.php', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8',
+                'X-CSRF-Token': csrfToken,
+                'X-Requested-With': 'XMLHttpRequest'
+            },
+            body: 'pv=1&page=' + encodeURIComponent(location.pathname),
+            credentials: 'same-origin'
+        }).catch(function() {});
+    })();
+
+    // ==================== 站点统计展示 ====================
+    // 从 /api/stats.php 拉取今日 PV / 24h 访客 / 24h PV / 总 PV，
+    // 填充侧栏统计组件与页脚（页面可被 CDN 缓存，数值必须异步获取）
+    (function initSiteStats() {
+        var nodes = document.querySelectorAll('[data-stat-value]');
+        if (!nodes.length) return;
+        fetch('/api/stats.php', {
+            headers: { 'X-Requested-With': 'XMLHttpRequest' },
+            credentials: 'same-origin'
+        })
+        .then(function(response) { return response.json(); })
+        .then(function(data) {
+            if (!data || !data.success || !data.stats) return;
+            var stats = data.stats;
+            nodes.forEach(function(el) {
+                var key = el.getAttribute('data-stat-value');
+                var value = stats[key];
+                if (typeof value === 'number') {
+                    el.textContent = value.toLocaleString();
+                }
+            });
+        })
+        .catch(function() {});
+    })();
+
+
+    // ==================== 全局 data-toggle 切换显示 ====================
+    document.querySelectorAll('[data-toggle-target]').forEach(function(el) {
+        el.addEventListener('click', function() {
+            var target = document.getElementById(el.getAttribute('data-toggle-target'));
+            var display = el.getAttribute('data-toggle-display');
+            if (target) {
+                target.style.display = display || (target.style.display === 'none' ? 'block' : 'none');
+            }
+        });
+    });
+
+    // ==================== 全局 data-confirm 确认框 ====================
+    document.querySelectorAll('a[data-confirm], button[data-confirm]').forEach(function(el) {
+        var tagName = el.tagName.toLowerCase();
+        if (tagName === 'a') {
+            el.addEventListener('click', function(e) {
+                if (!confirm(el.getAttribute('data-confirm'))) {
+                    e.preventDefault();
+                }
+            });
+        } else {
+            var form = el.closest('form');
+            if (form) {
+                form.addEventListener('submit', function(e) {
+                    if (!confirm(el.getAttribute('data-confirm'))) {
+                        e.preventDefault();
+                    }
+                });
+            }
+        }
+    });
+});
+
+// ==================== 增强主题切换动画 ====================
+// 只在切换主题的那一刻临时加类，由 CSS 提供颜色过渡。
+// （原先在页面加载时就给 .header/.card/.article-item 等写内联 transition，
+//   会把样式表里的 transform/opacity 过渡一起覆盖掉，智能头部收起和列表渐入直接失效。）
+function playThemeTransition() {
+    if (prefersReducedMotion) return;
+    const root = document.documentElement;
+    root.classList.add('theme-transitioning');
+    window.clearTimeout(playThemeTransition._timer);
+    playThemeTransition._timer = window.setTimeout(function() {
+        root.classList.remove('theme-transitioning');
+    }, 320);
+}
+
+// ==================== 主题切换功能 ====================
+function initTheme() {
+    const themeToggle = document.querySelector('.theme-toggle');
+    const html = document.documentElement;
+    
+    const savedTheme = getStoredTheme();
+
+    function getStoredTheme() {
+        try {
+            return localStorage.getItem('theme') || 'auto';
+        } catch (e) {
+            return 'auto';
+        }
+    }
+    
+    function applyTheme(theme) {
+        if (theme === 'dark') {
+            html.setAttribute('data-theme', 'dark');
+        } else if (theme === 'light') {
+            html.setAttribute('data-theme', 'light');
+        } else {
+            // 跟随系统：解析成显式的 dark/light，深色令牌只挂在 [data-theme="dark"] 上，
+            // 不设置属性会退回样式表里的浅色 + 旧媒体查询，出现混合配色。
+            const prefersDark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+            html.setAttribute('data-theme', prefersDark ? 'dark' : 'light');
+        }
+        updateThemeIcon(theme);
+        if (themeToggle) themeToggle.removeAttribute('aria-pressed');
+    }
+    
+    function updateThemeIcon(theme) {
+        if (!themeToggle) return;
+        if (theme === 'dark') {
+            // 深色模式：显示太阳（点击切换到浅色）
+            themeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>';
+             themeToggle.title = '切换到浅色';
+             themeToggle.setAttribute('aria-label', '切换到浅色主题');
+        } else if (theme === 'light') {
+            // 浅色模式：显示月亮（点击切换到深色）
+            themeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>';
+             themeToggle.title = '切换到深色';
+             themeToggle.setAttribute('aria-label', '切换到深色主题');
+        } else {
+            // 自动模式：显示显示器图标（区别于浅色的月亮，代表跟随系统）
+            themeToggle.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="20" height="14" x="2" y="3" rx="2"/><line x1="8" x2="16" y1="21" y2="21"/><line x1="12" x2="12" y1="17" y2="21"/></svg>';
+             themeToggle.title = '跟随系统';
+             themeToggle.setAttribute('aria-label', '切换到跟随系统主题');
+        }
+    }
+    
+    applyTheme(savedTheme);
+    
+    if (themeToggle) {
+        themeToggle.addEventListener('click', function() {
+            const current = getStoredTheme();
+            let next;
+            if (current === 'auto') next = 'light';
+            else if (current === 'light') next = 'dark';
+            else next = 'auto';
+            
+            try {
+                localStorage.setItem('theme', next);
+            } catch (e) {
+                // 存储不可用时仍保留当前页面主题
+            }
+            playThemeTransition();
+            applyTheme(next);
+        });
+    }
+    
+    // 监听系统主题变化
+        if (window.matchMedia) {
+            const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+            const handleThemeChange = function() {
+                if (getStoredTheme() === 'auto') applyTheme('auto');
+            };
+            if (mediaQuery.addEventListener) {
+                mediaQuery.addEventListener('change', handleThemeChange);
+            } else if (mediaQuery.addListener) {
+                mediaQuery.addListener(handleThemeChange);
+            }
+        }
+
+    // ==================== 标签 hover 增强 ====================
+    // 触摸端 hover 会粘滞，降低动效偏好下也不做位移
+    if (prefersReducedMotion || 'ontouchstart' in window) return;
+    document.querySelectorAll('.tag').forEach(function(tag) {
+        tag.addEventListener('mouseenter', function() {
+            this.style.transform = 'translateY(-1px) scale(1.03)';
+        });
+        tag.addEventListener('mouseleave', function() {
+            this.style.transform = '';
+        });
+    });
+}
+
+// ==================== 多图上传 ====================
+function initMultiUpload() {
+    const uploadAreas = document.querySelectorAll('.upload-area');
+    
+    uploadAreas.forEach(area => {
+        const input = area.querySelector('input[type="file"]');
+        const preview = area.querySelector('.upload-preview');
+        
+        if (!input || !preview) return;
+        
+        area.addEventListener('click', () => input.click());
+        area.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            area.style.borderColor = 'var(--primary-color)';
+        });
+        area.addEventListener('dragleave', () => {
+            area.style.borderColor = '';
+        });
+        area.addEventListener('drop', (e) => {
+            e.preventDefault();
+            area.style.borderColor = '';
+            if (e.dataTransfer.files) {
+                handleFiles(e.dataTransfer.files, preview, input);
+            }
+        });
+        
+        input.addEventListener('change', function() {
+            if (this.files) {
+                handleFiles(this.files, preview, input);
+            }
+        });
+    });
+}
+
+function handleFiles(files, previewContainer, input) {
+    Array.from(files).forEach(file => {
+        if (!file.type.startsWith('image/')) return;
+        
+        const reader = new FileReader();
+        reader.onload = function(e) {
+            const item = document.createElement('div');
+            item.className = 'upload-preview-item';
+            item.innerHTML = `
+                <img src="${e.target.result}" alt="">
+                <button type="button" class="remove-btn">&times;</button>
+            `;
+            
+            item.querySelector('.remove-btn').addEventListener('click', function() {
+                item.remove();
+            });
+            
+            previewContainer.appendChild(item);
+        };
+        reader.readAsDataURL(file);
+    });
+}
+
+// ==================== 图片灯箱 ====================
+function initLightbox() {
+    const lightbox = document.querySelector('.lightbox');
+    if (!lightbox) return;
+    
+    const lightboxImg = lightbox.querySelector('img');
+    const lightboxClose = lightbox.querySelector('.lightbox-close');
+    
+    let lightboxTrigger = null;
+
+        window.appOpenLightbox = openLightbox;
+        window.appCloseLightbox = closeLightbox;
+
+        function openLightbox(src, alt, trigger) {
+            if (!src || !lightboxImg) return;
+            lightboxImg.src = src;
+            lightboxImg.alt = alt || '预览图片';
+            lightboxTrigger = trigger || null;
+            if (!lightbox.classList.contains('active')) window.appLockScroll();
+            lightbox.setAttribute('aria-hidden', 'false');
+            lightbox.classList.add('active');
+            if (lightboxClose) lightboxClose.focus();
+        }
+
+        // 文章画廊图片点击（含说说配图）
+        document.querySelectorAll('.article-gallery-item img, .article-content img, .shuoshuo-item-images img').forEach(img => {
+            img.style.cursor = 'zoom-in';
+            img.addEventListener('click', function() {
+                openLightbox(this.src, this.alt, this);
+            });
+        });
+    
+    // 关闭灯箱
+        if (lightboxClose) {
+            lightboxClose.addEventListener('click', closeLightbox);
+        }
+        lightbox.addEventListener('app-open', function (e) {
+            const detail = e.detail || {};
+            openLightbox(detail.src, detail.alt, detail.trigger);
+        });
+    lightbox.addEventListener('click', function(e) {
+        if (e.target === lightbox) closeLightbox();
+    });
+
+    // Escape 关闭由 ui-enhancements.js 的统一调度按层级触发，此处不再单独监听，
+    // 避免多个监听器同时关闭不同弹层。
+    lightbox.addEventListener('app-close', closeLightbox);
+    
+    function closeLightbox() {
+        if (!lightbox.classList.contains('active')) return;
+        lightbox.classList.remove('active');
+        lightbox.setAttribute('aria-hidden', 'true');
+        lightboxImg.removeAttribute('src');
+        window.appUnlockScroll();
+        if (lightboxTrigger && typeof lightboxTrigger.focus === 'function') lightboxTrigger.focus();
+        lightboxTrigger = null;
+    }
+}
+
+// ==================== 显示消息提示 ====================
+function showMessage(message, type = 'success') {
+    const existingAlert = document.querySelector('.alert-float');
+    if (existingAlert) existingAlert.remove();
+    
+    const alert = document.createElement('div');
+    alert.className = `alert alert-${type} alert-float`;
+    alert.style.cssText = 'position:fixed;top:20px;right:20px;z-index:9999;box-shadow:0 4px 12px rgba(0,0,0,0.15);';
+    alert.textContent = message;
+    
+    document.body.appendChild(alert);
+    
+    setTimeout(() => {
+        alert.style.opacity = '0';
+        alert.style.transition = 'opacity 0.5s';
+        setTimeout(() => alert.remove(), 500);
+    }, 3000);
+}
+
+// ==================== 确认删除 ====================
+function confirmDelete(message) {
+    return confirm(message || '确定要删除吗？此操作不可恢复！');
+}
+
+// ==================== 复制到剪贴板 ====================
+function copyToClipboard(text) {
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(text).then(() => {
+            showMessage('复制成功', 'success');
+        });
+    } else {
+        const textarea = document.createElement('textarea');
+        textarea.value = text;
+        document.body.appendChild(textarea);
+        textarea.select();
+        document.execCommand('copy');
+        document.body.removeChild(textarea);
+        showMessage('复制成功', 'success');
+    }
+}
+
+// ==================== 返回顶部 ====================
+// 注：返回顶部按钮与阅读进度条由 template/header.php 静态输出，
+// 滚动显隐与进度计算由 ui-enhancements.js 统一处理，此处不再重复创建。
+function scrollToTop() {
+    window.scrollTo({ top: 0, behavior: appScrollBehavior() });
+}
+
+// ==================== 初始化 Lucide 图标 ====================
+if (typeof lucide !== 'undefined') {
+    lucide.createIcons();
+}

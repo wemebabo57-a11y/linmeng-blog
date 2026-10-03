@@ -1,0 +1,184 @@
+/* ==================== 说说页 ==================== */
+
+.shuoshuo-hero {
+    text-align: center;
+    padding: 40px 24px 28px;
+    margin-bottom: 20px;
+}
+
+.shuoshuo-hero-title {
+    font-size: 2.2rem;
+    font-weight: 800;
+    letter-spacing: 2px;
+    margin: 0 0 8px;
+}
+
+.shuoshuo-hero-subtitle {
+    color: var(--text-secondary, #8a8a9e);
+    margin: 0 0 20px;
+    font-size: 0.95rem;
+}
+
+.shuoshuo-hero-stats {
+    display: flex;
+    justify-content: center;
+    gap: 32px;
+}
+
+.shuoshuo-hero-stat-value {
+    font-size: 1.5rem;
+    font-weight: 800;
+}
+
+.shuoshuo-hero-stat-label {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #8a8a9e);
+}
+
+/* 时间线 */
+.shuoshuo-timeline {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 18px;
+}
+
+.shuoshuo-timeline::before {
+    content: '';
+    position: absolute;
+    left: 23px;
+    top: 12px;
+    bottom: 12px;
+    width: 2px;
+    background: var(--border-color, rgba(0, 0, 0, 0.08));
+    border-radius: 2px;
+}
+
+.shuoshuo-item {
+    position: relative;
+    padding: 20px 22px;
+    margin-left: 0;
+}
+
+/* 时间线节点 */
+.shuoshuo-item::before {
+    content: '';
+    position: absolute;
+    left: -30px;
+    top: 32px;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--primary-color, #ff7ba5);
+    box-shadow: 0 0 0 3px rgba(255, 123, 165, 0.18);
+}
+
+@media (max-width: 768px) {
+    .shuoshuo-timeline::before {
+        display: none;
+    }
+
+    .shuoshuo-item::before {
+        display: none;
+    }
+}
+
+.shuoshuo-item-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 12px;
+}
+
+.shuoshuo-avatar {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    object-fit: cover;
+    flex-shrink: 0;
+    border: 2px solid rgba(255, 123, 165, 0.25);
+}
+
+.shuoshuo-item-meta {
+    flex: 1;
+    min-width: 0;
+}
+
+.shuoshuo-item-author {
+    font-weight: 700;
+    font-size: 0.95rem;
+}
+
+.shuoshuo-item-time {
+    font-size: 0.8rem;
+    color: var(--text-secondary, #8a8a9e);
+}
+
+.shuoshuo-mood {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 999px;
+    font-size: 0.78rem;
+    background: rgba(255, 123, 165, 0.12);
+    color: var(--primary-color, #ff5c8d);
+}
+
+.shuoshuo-item-content {
+    font-size: 0.98rem;
+    line-height: 1.8;
+    word-break: break-word;
+    white-space: pre-wrap;
+}
+
+.shuoshuo-item-images {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 8px;
+    margin-top: 14px;
+}
+
+.shuoshuo-item-images--single {
+    grid-template-columns: minmax(0, 480px);
+    /* 单图要保持原始比例（没有 aspect-ratio），先预留高度，
+       否则图片解码后会把下方内容整体顶下来，造成布局偏移（CLS）。
+       align-items:start 防止图片被拉伸填满预留高度。 */
+    align-items: start;
+    min-height: 180px;
+}
+
+.shuoshuo-item-image {
+    width: 100%;
+    aspect-ratio: 1 / 1;
+    object-fit: cover;
+    border-radius: 10px;
+    cursor: zoom-in;
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.shuoshuo-item-images--single .shuoshuo-item-image {
+    aspect-ratio: auto;
+    max-height: 420px;
+    align-self: start;
+}
+
+.shuoshuo-item-image:hover {
+    transform: scale(1.02);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.12);
+}
+
+.shuoshuo-item-footer {
+    margin-top: 12px;
+    padding-top: 10px;
+    border-top: 1px dashed var(--border-color, rgba(0, 0, 0, 0.08));
+    font-size: 0.78rem;
+    color: var(--text-secondary, #8a8a9e);
+    text-align: right;
+}
+
+@media (max-width: 480px) {
+    .shuoshuo-item-images {
+        grid-template-columns: repeat(2, 1fr);
+    }
+}

@@ -1,0 +1,32 @@
+# 敏感凭据（永远不要提交）
+.env
+.env.*
+!.env.example
+.user.ini
+
+# 安装标记
+/includes/config_installed.php
+
+# 用户上传内容
+/assets/uploads/*
+!/assets/uploads/index.html
+
+# 日志
+*.log
+/logs/
+
+# 页面缓存（PageCache 运行时生成）
+/cache/
+
+# IDE / 编辑器
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# 构建产物（若未来引入构建工具）
+/node_modules/
+/dist/
+/build/

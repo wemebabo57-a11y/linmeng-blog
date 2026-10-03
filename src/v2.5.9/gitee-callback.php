@@ -1,0 +1,220 @@
+<?php
+/**
+ * Gitee OAuth 登录回调处理
+ */
+define('APP_ROOT', __DIR__);
+
+require_once APP_ROOT . '/includes/config.php';
+require_once APP_ROOT . '/includes/Security.php';
+require_once APP_ROOT . '/includes/Database.php';
+require_once APP_ROOT . '/includes/functions.php';
+
+session_start();
+Security::setSecurityHeaders();
+
+// 注意：已登录用户不在此处跳转——回调承载"登录态下主动绑定当前账号"的意图，
+// 绑定逻辑在下方"按 gitee_id 未找到已绑定用户且处于登录态"的分支中执行。
+
+// 检查是否启用 Gitee 登录
+$giteeEnabled = (getSetting('gitee_oauth_enabled', '0') === '1');
+$clientId = getSetting('gitee_client_id', '');
+$clientSecret = getSetting('gitee_client_secret', '');
+
+if (!$giteeEnabled || empty($clientId) || empty($clientSecret)) {
+    $_SESSION['gitee_oauth_error'] = 'Gitee 登录未启用或配置不完整';
+    Security::redirect('/login.php');
+}
+
+// 参数校验
+$code = $_GET['code'] ?? '';
+$state = $_GET['state'] ?? '';
+$error = $_GET['error'] ?? '';
+$errorDescription = $_GET['error_description'] ?? '';
+
+if (!empty($error)) {
+    $_SESSION['gitee_oauth_error'] = 'Gitee 授权失败：' . ($errorDescription ?: $error);
+    Security::redirect('/login.php');
+}
+
+if (empty($code) || empty($state) || empty($_SESSION['gitee_oauth_state'])) {
+    $_SESSION['gitee_oauth_error'] = '授权参数不完整，请重试';
+    Security::redirect('/login.php');
+}
+
+if (!hash_equals((string)$_SESSION['gitee_oauth_state'], (string)$state)) {
+    $_SESSION['gitee_oauth_error'] = '安全校验失败，请重试';
+    Security::redirect('/login.php');
+}
+
+// 清理 state
+unset($_SESSION['gitee_oauth_state']);
+
+// 换取 access_token（Gitee token 接口为 form-encoded POST）
+$redirectUri = rtrim(SITE_URL, '/') . '/gitee-callback.php';
+$tokenResponse = Security::httpPostForm(
+    'https://gitee.com/oauth/token',
+    [
+        'grant_type' => 'authorization_code',
+        'code' => $code,
+        'client_id' => $clientId,
+        'client_secret' => $clientSecret,
+        'redirect_uri' => $redirectUri,
+    ],
+    ['Accept: application/json'],
+    30
+);
+
+if (!$tokenResponse['success']) {
+    $_SESSION['gitee_oauth_error'] = '获取 Gitee 授权信息失败';
+    Security::redirect('/login.php');
+}
+
+$tokenData = json_decode($tokenResponse['response'], true);
+if (empty($tokenData['access_token'])) {
+    $_SESSION['gitee_oauth_error'] = 'Gitee 未返回授权凭证：' . ($tokenData['error_description'] ?? ($tokenData['error'] ?? ($tokenData['message'] ?? '未知错误')));
+    Security::redirect('/login.php');
+}
+
+$accessToken = $tokenData['access_token'];
+
+// 获取 Gitee 用户信息（GET，access_token 作为查询参数）
+function giteeApiGet($url, $accessToken) {
+    if (!function_exists('curl_init')) {
+        return ['success' => false, 'response' => null, 'error' => 'cURL 扩展未启用'];
+    }
+    $sep = (strpos($url, '?') === false) ? '?' : '&';
+    $url = $url . $sep . 'access_token=' . urlencode($accessToken);
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Accept: application/json',
+        'User-Agent: Blog-Blog-Gitee-OAuth'
+    ]);
+    $response = curl_exec($ch);
+    $error = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false) {
+        return ['success' => false, 'response' => null, 'error' => $error];
+    }
+    return ['success' => true, 'response' => $response, 'http_code' => $httpCode];
+}
+
+$userResponse = giteeApiGet('https://gitee.com/api/v5/user', $accessToken);
+if (!$userResponse['success'] || $userResponse['http_code'] !== 200) {
+    $_SESSION['gitee_oauth_error'] = '获取 Gitee 用户信息失败';
+    Security::redirect('/login.php');
+}
+
+$giteeUser = json_decode($userResponse['response'], true);
+if (empty($giteeUser['id'])) {
+    $_SESSION['gitee_oauth_error'] = 'Gitee 用户数据异常';
+    Security::redirect('/login.php');
+}
+
+$giteeId = (string)$giteeUser['id'];
+$giteeLogin = trim($giteeUser['login'] ?? '');
+$giteeName = trim($giteeUser['name'] ?? '');
+$giteeEmail = trim($giteeUser['email'] ?? '');
+$giteeAvatar = trim($giteeUser['avatar_url'] ?? '');
+// 安全说明：Gitee 公开邮箱不含"已验证"语义，任何人可设置为他人邮箱，
+// 因此绝不按 email 匹配绑定已有账号（防账号接管）。
+// 已有账号的绑定仅限登录态下由用户本人主动发起。
+try {
+    // 尝试查找已绑定的用户
+    $user = db()->fetchOne("SELECT * FROM app_admin WHERE gitee_id = ?", [$giteeId]);
+
+    if (!$user && isLoggedIn() && (int)($_SESSION['user_id'] ?? 0) > 0) {
+        // 登录态下主动绑定当前账号
+        $bindUid = (int)$_SESSION['user_id'];
+        db()->update('app_admin', [
+            'gitee_id' => $giteeId,
+            'gitee_username' => $giteeLogin
+        ], 'id = ?', [$bindUid]);
+        $user = db()->fetchOne("SELECT * FROM app_admin WHERE id = ?", [$bindUid]);
+    }
+
+    if (!$user) {
+        // 创建新用户（Gitee 登录直接通过，无需管理员审核）
+        $baseUsername = preg_replace('/[^a-zA-Z0-9_]/', '', $giteeLogin);
+        $baseUsername = substr($baseUsername, 0, 20);
+        if (strlen($baseUsername) < 3) {
+            $baseUsername = 'gitee_' . substr($giteeId, 0, 14);
+        }
+        $username = $baseUsername;
+        $counter = 1;
+        while (db()->fetchColumn("SELECT COUNT(*) FROM app_admin WHERE username = ?", [$username])) {
+            $username = $baseUsername . '_' . $counter;
+            $counter++;
+            if ($counter > 100) {
+                throw new Exception('无法生成可用用户名');
+            }
+        }
+
+        $email = !empty($giteeEmail) ? $giteeEmail : $username . '@gitee.local';
+        $nickname = !empty($giteeName) ? $giteeName : $giteeLogin;
+        // 头像：保存 Gitee 头像地址，前台渲染时回退到默认头像
+        $avatar = !empty($giteeAvatar) ? $giteeAvatar : '';
+
+        db()->insert('app_admin', [
+            'username' => $username,
+            'password' => Security::hashPassword(Security::randomString(32)),
+            'email' => $email,
+            'nickname' => $nickname,
+            'avatar' => $avatar,
+            'role' => 'user',
+            'status' => 1,
+            'gitee_id' => $giteeId,
+            'gitee_username' => $giteeLogin,
+            'created_at' => date('Y-m-d H:i:s')
+        ]);
+
+        $user = db()->fetchOne("SELECT * FROM app_admin WHERE gitee_id = ?", [$giteeId]);
+    }
+
+    if (!$user || empty($user['id'])) {
+        throw new Exception('用户创建失败');
+    }
+
+    if ((int)$user['status'] !== 1) {
+        $_SESSION['gitee_oauth_error'] = '账号已被禁用，请联系管理员';
+        Security::redirect('/login.php');
+    }
+
+    $ip = Security::getClientIp();
+
+    // 写入登录信息
+    db()->update('app_admin', [
+        'last_login' => date('Y-m-d H:i:s'),
+        'last_ip' => $ip,
+        'login_fail_count' => 0,
+        'lock_until' => null
+    ], 'id = ?', [$user['id']]);
+
+    // 记录登录日志
+    db()->insert('app_login_log', [
+        'user_id' => $user['id'],
+        'username' => $user['username'],
+        'ip' => $ip,
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+        'status' => 'success',
+        'fail_reason' => 'gitee_oauth'
+    ]);
+
+    // 写入 Session
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['role'] = $user['role'];
+    $_SESSION['is_admin'] = ($user['role'] === 'admin');
+
+    session_regenerate_id(true);
+    Security::redirect('/');
+} catch (Exception $e) {
+    error_log('Gitee OAuth callback failed: ' . $e->getMessage());
+    $_SESSION['gitee_oauth_error'] = '登录处理失败，请稍后重试';
+    Security::redirect('/login.php');
+}

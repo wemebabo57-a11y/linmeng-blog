@@ -1,0 +1,85 @@
+<?php
+define('APP_ROOT', __DIR__);
+
+require_once APP_ROOT . '/includes/config.php';
+require_once APP_ROOT . '/includes/Security.php';
+require_once APP_ROOT . '/includes/Database.php';
+require_once APP_ROOT . '/includes/functions.php';
+
+app_session_start();
+Security::setSecurityHeaders();
+app_public_cache_headers();
+
+$pageTitle = '捐赠页';
+$currentPage = 'donate';
+
+$donateTitle = getSetting('donate_title', '捐赠页');
+$donateDescription = getSetting('donate_description', '如果这个网站对你有帮助，可以自愿捐赠。');
+$alipayQrcode = getSetting('donate_alipay_qrcode', '');
+$wechatQrcode = getSetting('donate_wechat_qrcode', '');
+$donorWall = getDonorWall();
+
+require_once APP_ROOT . '/template/header.php';
+?>
+
+<div class="card">
+    <div class="card-header">
+        <div class="card-title">捐赠页</div>
+    </div>
+    <div class="card-body" style="text-align: center;">
+        <h1 style="font-size: 1.5rem; margin-bottom: 12px;"><?php echo e($donateTitle); ?></h1>
+        <?php if ($donateDescription): ?>
+        <p style="color: var(--text-secondary); margin-bottom: 28px; line-height: 1.8;"><?php echo nl2br(e($donateDescription)); ?></p>
+        <?php endif; ?>
+
+        <p class="donate-note">赞助时备注你的名字以及需要跳转的链接喵，后台审核后会出现在下方捐赠墙。</p>
+
+        <?php if ($alipayQrcode || $wechatQrcode): ?>
+        <div class="donate-qrcode-wrapper">
+            <?php if ($alipayQrcode): ?>
+            <div class="donate-qrcode-item">
+                <img src="<?php echo e($alipayQrcode); ?>" alt="支付宝收款码" loading="lazy">
+                <div class="donate-qrcode-label">支付宝</div>
+            </div>
+            <?php endif; ?>
+
+            <?php if ($wechatQrcode): ?>
+            <div class="donate-qrcode-item">
+                <img src="<?php echo e($wechatQrcode); ?>" alt="微信收款码" loading="lazy">
+                <div class="donate-qrcode-label">微信</div>
+            </div>
+            <?php endif; ?>
+        </div>
+        <?php else: ?>
+        <div class="empty-state" style="padding: 40px 20px;">
+            <h3>暂未配置收款码</h3>
+            <p>请在后台网站设置里填写收款码直链或上传图片。</p>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<div class="card donate-wall-card">
+    <div class="card-header">
+        <div class="card-title">捐赠墙</div>
+    </div>
+    <div class="card-body">
+        <?php if (!empty($donorWall)): ?>
+        <div class="donate-wall">
+            <?php foreach ($donorWall as $donor): ?>
+            <?php if ($donor['url'] !== ''): ?>
+            <a class="donate-wall-item" href="<?php echo e($donor['url']); ?>" target="_blank" rel="noopener noreferrer"><?php echo e($donor['name']); ?></a>
+            <?php else: ?>
+            <span class="donate-wall-item"><?php echo e($donor['name']); ?></span>
+            <?php endif; ?>
+            <?php endforeach; ?>
+        </div>
+        <?php else: ?>
+        <div class="empty-state empty-state--compact" style="padding: 24px 20px;">
+            <p>还没有捐赠者，期待第一个名字出现喵。</p>
+        </div>
+        <?php endif; ?>
+    </div>
+</div>
+
+<?php require_once APP_ROOT . '/template/sidebar.php'; ?>

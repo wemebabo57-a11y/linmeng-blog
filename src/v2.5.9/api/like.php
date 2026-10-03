@@ -1,0 +1,95 @@
+<?php
+/**
+ * 文章点赞API
+ */
+define('APP_ROOT', dirname(__DIR__));
+
+require_once APP_ROOT . '/includes/config.php';
+require_once APP_ROOT . '/includes/Security.php';
+require_once APP_ROOT . '/includes/Database.php';
+require_once APP_ROOT . '/includes/functions.php';
+
+header('Content-Type: application/json');
+
+// 点赞后建立会话：让互动过的访客在文章页/首页等始终看到实时数据
+// （携带 PHPSESSID 的请求不会被 CDN 缓存，也不会命中公共缓存页）。
+// 缓存页上的匿名 CSRF 令牌由 validateToken 的无状态分支校验，不受影响。
+session_start();
+
+// 只允许POST请求
+if ($_SERVER['REQUEST_METHOD'] !== 'POST') {
+    echo json_encode(['success' => false, 'message' => '请求方式错误']);
+    exit;
+}
+
+// CSRF验证
+$token = $_POST[CSRF_TOKEN_NAME] ?? '';
+if (!Security::validateToken($token)) {
+    echo json_encode(['success' => false, 'message' => '安全验证失败，请刷新页面重试']);
+    exit;
+}
+
+$clientIp = Security::getClientIp();
+
+// 限流：每个 IP 每分钟最多 30 次点赞操作
+if (!Security::checkRateLimit($clientIp, 'article_like', 30, 60)) {
+    echo json_encode(['success' => false, 'message' => '操作过于频繁，请稍后再试']);
+    exit;
+}
+
+$articleId = isset($_POST['article_id']) ? (int)$_POST['article_id'] : 0;
+
+if ($articleId <= 0) {
+    echo json_encode(['success' => false, 'message' => '参数错误']);
+    exit;
+}
+
+try {
+    // 检查文章是否存在
+    $article = db()->fetchOne("SELECT id FROM app_article WHERE id = ? AND status = 'published'", [$articleId]);
+    if (!$article) {
+        echo json_encode(['success' => false, 'message' => '文章不存在']);
+        exit;
+    }
+
+    // 原子化点赞切换：事务 + INSERT IGNORE，消除 SELECT-then-act 的 TOCTOU 竞态
+    // 依赖 app_article_like 上的 UNIQUE KEY (article_id, ip)
+    // 注：点赞数为派生值（COUNT(*) 实时计算），app_article 无 likes 列，无需维护计数列
+    db()->beginTransaction();
+    try {
+        $stmt = db()->query(
+            "INSERT IGNORE INTO app_article_like (article_id, ip, created_at) VALUES (?, ?, ?)",
+            [$articleId, $clientIp, date('Y-m-d H:i:s')]
+        );
+        $inserted = $stmt->rowCount();
+
+        if ($inserted > 0) {
+            // 新插入：本次为点赞
+            $liked = true;
+            $message = '点赞成功';
+        } else {
+            // 已存在（重复点赞）：按原切换逻辑取消点赞
+            db()->delete('app_article_like', 'article_id = ? AND ip = ?', [$articleId, $clientIp]);
+            $liked = false;
+            $message = '已取消点赞';
+        }
+
+        // 获取最新点赞数
+        $count = db()->fetchColumn("SELECT COUNT(*) FROM app_article_like WHERE article_id = ?", [$articleId]);
+
+        db()->commit();
+    } catch (Exception $e) {
+        db()->rollback();
+        throw $e;
+    }
+
+    echo json_encode([
+        'success' => true,
+        'message' => $message,
+        'count' => (int)$count,
+        'liked' => $liked
+    ]);
+
+} catch (Exception $e) {
+    echo json_encode(['success' => false, 'message' => '操作失败']);
+}

@@ -1,0 +1,18 @@
+User-agent: *
+Allow: /
+Disallow: /admin/
+Disallow: /api/
+Disallow: /cache/
+Disallow: /includes/
+Disallow: /setup/
+Disallow: /login.php
+Disallow: /register.php
+Disallow: /logout.php
+Disallow: /gitcode-callback.php
+Disallow: /gitee-callback.php
+Disallow: /github-callback.php
+
+Crawl-delay: 5
+
+# 安装向导会自动把下面一行替换为你的站点地址
+Sitemap: https://example.com/sitemap.php

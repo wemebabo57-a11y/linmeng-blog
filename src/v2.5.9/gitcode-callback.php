@@ -1,0 +1,225 @@
+<?php
+/**
+ * GitCode OAuth 登录回调处理
+ *
+ * 端点（与 Gitee 不同）：
+ *   授权：  https://gitcode.com/oauth/authorize
+ *   换 token：POST https://gitcode.com/oauth/token  (参数走 query string，文档未含 redirect_uri)
+ *   用户信息：GET https://api.gitcode.com/api/v5/user  (Authorization: Bearer)
+ */
+define('APP_ROOT', __dir__);
+
+require_once APP_ROOT . '/includes/config.php';
+require_once APP_ROOT . '/includes/Security.php';
+require_once APP_ROOT . '/includes/Database.php';
+require_once APP_ROOT . '/includes/functions.php';
+
+session_start();
+Security::setSecurityHeaders();
+
+// 注意：已登录用户不在此处跳转——回调承载"登录态下主动绑定当前账号"的意图，
+// 绑定逻辑在下方"按 gitcode_id 未找到已绑定用户且处于登录态"的分支中执行。
+
+// 检查是否启用 GitCode 登录
+$gitcodeEnabled = (getSetting('gitcode_oauth_enabled', '0') === '1');
+$clientId = getSetting('gitcode_client_id', '');
+$clientSecret = getSetting('gitcode_client_secret', '');
+
+if (!$gitcodeEnabled || empty($clientId) || empty($clientSecret)) {
+    $_SESSION['gitcode_oauth_error'] = 'GitCode 登录未启用或配置不完整';
+    Security::redirect('/login.php');
+}
+
+// 参数校验
+$code = $_GET['code'] ?? '';
+$state = $_GET['state'] ?? '';
+$error = $_GET['error'] ?? '';
+$errorDescription = $_GET['error_description'] ?? '';
+
+if (!empty($error)) {
+    $_SESSION['gitcode_oauth_error'] = 'GitCode 授权失败：' . ($errorDescription ?: $error);
+    Security::redirect('/login.php');
+}
+
+if (empty($code) || empty($state) || empty($_SESSION['gitcode_oauth_state'])) {
+    $_SESSION['gitcode_oauth_error'] = '授权参数不完整，请重试';
+    Security::redirect('/login.php');
+}
+
+if (!hash_equals((string)$_SESSION['gitcode_oauth_state'], (string)$state)) {
+    $_SESSION['gitcode_oauth_error'] = '安全校验失败，请重试';
+    Security::redirect('/login.php');
+}
+
+// 清理 state
+unset($_SESSION['gitcode_oauth_state']);
+
+// 换取 access_token
+// 官方文档：grant_type/code/client_id 走 query string，client_secret 走 form-data body
+// 不传 redirect_uri（文档未列出）
+$tokenUrl = 'https://gitcode.com/oauth/token?' . http_build_query([
+    'grant_type' => 'authorization_code',
+    'code' => $code,
+    'client_id' => $clientId,
+]);
+$tokenResponse = Security::httpPostForm(
+    $tokenUrl,
+    ['client_secret' => $clientSecret],
+    ['Accept: application/json'],
+    30
+);
+
+if (!$tokenResponse['success']) {
+    $_SESSION['gitcode_oauth_error'] = '获取 GitCode 授权信息失败';
+    Security::redirect('/login.php');
+}
+
+$tokenData = json_decode($tokenResponse['response'], true);
+if (empty($tokenData['access_token'])) {
+    $errMsg = $tokenData['error_description'] ?? ($tokenData['error'] ?? ($tokenData['message'] ?? '未知错误'));
+    $_SESSION['gitcode_oauth_error'] = 'GitCode 未返回授权凭证：' . $errMsg;
+    Security::redirect('/login.php');
+}
+
+$accessToken = $tokenData['access_token'];
+
+// 获取 GitCode 用户信息（api.gitcode.com 子域，Authorization: Bearer）
+function gitcodeApiGet($url, $accessToken) {
+    if (!function_exists('curl_init')) {
+        return ['success' => false, 'response' => null, 'error' => 'cURL 扩展未启用'];
+    }
+    $ch = curl_init($url);
+    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+    curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, true);
+    curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, 2);
+    curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        'Authorization: Bearer ' . $accessToken,
+        'Accept: application/json',
+        'User-Agent: Blog-Blog-GitCode-OAuth'
+    ]);
+    $response = curl_exec($ch);
+    $error = curl_error($ch);
+    $httpCode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+    curl_close($ch);
+
+    if ($response === false) {
+        return ['success' => false, 'response' => null, 'error' => $error];
+    }
+    return ['success' => true, 'response' => $response, 'http_code' => $httpCode];
+}
+
+$userResponse = gitcodeApiGet('https://api.gitcode.com/api/v5/user', $accessToken);
+if (!$userResponse['success'] || $userResponse['http_code'] !== 200) {
+    $_SESSION['gitcode_oauth_error'] = '获取 GitCode 用户信息失败';
+    Security::redirect('/login.php');
+}
+
+$gitcodeUser = json_decode($userResponse['response'], true);
+if (empty($gitcodeUser['id'])) {
+    $_SESSION['gitcode_oauth_error'] = 'GitCode 用户数据异常';
+    Security::redirect('/login.php');
+}
+
+$gitcodeId = (string)$gitcodeUser['id'];
+$gitcodeLogin = trim($gitcodeUser['login'] ?? '');
+$gitcodeName = trim($gitcodeUser['name'] ?? '');
+$gitcodeEmail = trim($gitcodeUser['email'] ?? '');
+$gitcodeAvatar = trim($gitcodeUser['avatar_url'] ?? '');
+// 安全说明：GitCode 公开邮箱不含"已验证"语义，任何人可设置为他人邮箱，
+// 因此绝不按 email 匹配绑定已有账号（防账号接管）。
+// 已有账号的绑定仅限登录态下由用户本人主动发起。
+try {
+    // 尝试查找已绑定的用户
+    $user = db()->fetchOne("SELECT * FROM app_admin WHERE gitcode_id = ?", [$gitcodeId]);
+
+    if (!$user && isLoggedIn() && (int)($_SESSION['user_id'] ?? 0) > 0) {
+        // 登录态下主动绑定当前账号
+        $bindUid = (int)$_SESSION['user_id'];
+        db()->update('app_admin', [
+            'gitcode_id' => $gitcodeId,
+            'gitcode_username' => $gitcodeLogin
+        ], 'id = ?', [$bindUid]);
+        $user = db()->fetchOne("SELECT * FROM app_admin WHERE id = ?", [$bindUid]);
+    }
+
+    if (!$user) {
+        // 创建新用户（GitCode 登录直接通过，无需管理员审核）
+        $baseUsername = preg_replace('/[^a-zA-Z0-9_]/', '', $gitcodeLogin);
+        $baseUsername = substr($baseUsername, 0, 20);
+        if (strlen($baseUsername) < 3) {
+            $baseUsername = 'gitcode_' . substr($gitcodeId, 0, 12);
+        }
+        $username = $baseUsername;
+        $counter = 1;
+        while (db()->fetchColumn("SELECT COUNT(*) FROM app_admin WHERE username = ?", [$username])) {
+            $username = $baseUsername . '_' . $counter;
+            $counter++;
+            if ($counter > 100) {
+                throw new Exception('无法生成可用用户名');
+            }
+        }
+
+        $email = !empty($gitcodeEmail) ? $gitcodeEmail : $username . '@gitcode.local';
+        $nickname = !empty($gitcodeName) ? $gitcodeName : $gitcodeLogin;
+        $avatar = !empty($gitcodeAvatar) ? $gitcodeAvatar : '';
+
+        db()->insert('app_admin', [
+            'username' => $username,
+            'password' => Security::hashPassword(Security::randomString(32)),
+            'email' => $email,
+            'nickname' => $nickname,
+            'avatar' => $avatar,
+            'role' => 'user',
+            'status' => 1,
+            'gitcode_id' => $gitcodeId,
+            'gitcode_username' => $gitcodeLogin,
+            'created_at' => date('Y-m-d H:i:s')
+        ]);
+
+        $user = db()->fetchOne("SELECT * FROM app_admin WHERE gitcode_id = ?", [$gitcodeId]);
+    }
+
+    if (!$user || empty($user['id'])) {
+        throw new Exception('用户创建失败');
+    }
+
+    if ((int)$user['status'] !== 1) {
+        $_SESSION['gitcode_oauth_error'] = '账号已被禁用，请联系管理员';
+        Security::redirect('/login.php');
+    }
+
+    $ip = Security::getClientIp();
+
+    // 写入登录信息
+    db()->update('app_admin', [
+        'last_login' => date('Y-m-d H:i:s'),
+        'last_ip' => $ip,
+        'login_fail_count' => 0,
+        'lock_until' => null
+    ], 'id = ?', [$user['id']]);
+
+    // 记录登录日志
+    db()->insert('app_login_log', [
+        'user_id' => $user['id'],
+        'username' => $user['username'],
+        'ip' => $ip,
+        'user_agent' => $_SERVER['HTTP_USER_AGENT'] ?? '',
+        'status' => 'success',
+        'fail_reason' => 'gitcode_oauth'
+    ]);
+
+    // 写入 Session
+    $_SESSION['user_id'] = $user['id'];
+    $_SESSION['username'] = $user['username'];
+    $_SESSION['role'] = $user['role'];
+    $_SESSION['is_admin'] = ($user['role'] === 'admin');
+
+    session_regenerate_id(true);
+    Security::redirect('/');
+} catch (Exception $e) {
+    // 详情仅进日志，不把内部错误（如数据库异常）回显给用户
+    error_log('GitCode OAuth callback failed: ' . $e->getMessage());
+    $_SESSION['gitcode_oauth_error'] = '登录处理失败，请稍后重试';
+    Security::redirect('/login.php');
+}

@@ -1,0 +1,482 @@
+/* ==========================================================================
+   Blog System — 安静编辑风 主题重设计（最终覆盖层）
+   加载顺序：design-system.css → style.css → theme-refresh.css（本文件最后生效）
+   风格方向：精致编辑感（衬线中文标题 + 无衬线正文）+ 克制的现代细节
+   主色 #e45757（朱红） ／ 强调色 #168a82（青绿）；深色经由 [data-theme="dark"]
+   ========================================================================== */
+
+/* ======================= 1. 浅色令牌 ======================= */
+:root {
+    /* 主色：朱红 */
+    --primary-color: #e45757;
+    --primary-hover: #d04949;
+    --primary-active: #b63c3c;
+    --primary-light: rgba(228, 87, 87, 0.10);
+    --primary-lighter: rgba(228, 87, 87, 0.05);
+    --primary-glow: rgba(228, 87, 87, 0.16);
+    --primary-gradient: linear-gradient(135deg, #e45757 0%, #c9765a 100%);
+    --primary-gradient-hover: linear-gradient(135deg, #d04949 0%, #b96650 100%);
+
+    /* 强调色：青绿 */
+    --accent-color: #168a82;
+    --accent-light: rgba(22, 138, 130, 0.10);
+    --accent-glow: rgba(22, 138, 130, 0.18);
+
+    /* 语义色 */
+    --success-color: #2f9473;
+    --success-light: rgba(47, 148, 115, 0.10);
+    --success-glow: rgba(47, 148, 115, 0.20);
+    --danger-color: #d04747;
+    --danger-light: rgba(208, 71, 71, 0.10);
+    --danger-glow: rgba(208, 71, 71, 0.20);
+    --warning-color: #c9973a;
+    --warning-light: rgba(201, 151, 58, 0.12);
+    --warning-glow: rgba(201, 151, 58, 0.20);
+    --info-color: #4a78b4;
+    --info-light: rgba(74, 120, 180, 0.10);
+    --info-glow: rgba(74, 120, 180, 0.18);
+
+    /* 纸面中性色 */
+    --bg-color: #f7f6f3;
+    --bg-subtle: #efeee9;
+    --bg-elevated: #ffffff;
+    --bg-hover: rgba(35, 39, 43, 0.04);
+    --card-bg: #ffffff;
+    --card-bg-solid: #ffffff;
+    --card-border: #e7e6e1;
+
+    /* 表单与代码 */
+    --input-bg: #ffffff;
+    --input-border: #d8d7d0;
+    --input-focus-shadow: 0 0 0 3px var(--primary-light);
+    --code-bg: #24272b;
+    --code-text: #e8e6e1;
+    --inline-code-bg: rgba(228, 87, 87, 0.08);
+    --inline-code-text: #c04343;
+
+    /* 文字 */
+    --text-color: #22262a;
+    --text-primary: #22262a;
+    --text-secondary: #5a636b;
+    --text-tertiary: #79838c;
+    --text-light: #79838c;
+    --text-muted: #98a1a9;
+    --text-inverse: #ffffff;
+
+    /* 描边 */
+    --border-color: #dcdad3;
+    --border-subtle: #e9e8e2;
+    --border-strong: #c8c6be;
+    --border-focus: var(--primary-color);
+
+    /* 交互底 */
+    --hover-bg: rgba(35, 39, 43, 0.045);
+    --active-bg: rgba(35, 39, 43, 0.08);
+    --glass-bg: rgba(247, 246, 243, 0.86);
+    --glass-border: rgba(34, 38, 42, 0.08);
+    --glass-blur: blur(14px) saturate(1.1);
+
+    /* 阴影：低饱和、贴近纸面 */
+    --shadow-xs: 0 1px 2px rgba(30, 34, 38, 0.04);
+    --shadow-sm: 0 1px 2px rgba(30, 34, 38, 0.05), 0 1px 3px rgba(30, 34, 38, 0.04);
+    --shadow-md: 0 6px 18px rgba(30, 34, 38, 0.07);
+    --shadow-lg: 0 14px 34px rgba(30, 34, 38, 0.09);
+    --shadow-xl: 0 20px 44px rgba(30, 34, 38, 0.11);
+    --shadow-2xl: 0 28px 60px rgba(30, 34, 38, 0.13);
+    --shadow-inner: inset 0 1px 2px rgba(30, 34, 38, 0.05);
+    --shadow-glow: 0 0 0 4px var(--primary-lighter);
+    --shadow-glow-lg: 0 0 0 6px var(--primary-lighter);
+
+    /* 圆角：编辑感使用偏直角 */
+    --radius-sm: 5px;
+    --radius: 8px;
+    --radius-lg: 10px;
+    --radius-xl: 14px;
+    --radius-2xl: 18px;
+    --radius-full: 9999px;
+
+    /* 字体：衬线中文标题 + 系统无衬线正文 */
+    --font-display: "Noto Serif SC", "Source Han Serif SC", "Songti SC", "SimSun", "STSong", Georgia, serif;
+    --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+    --font-mono: "JetBrains Mono", "Fira Code", Consolas, "SF Mono", monospace;
+
+    /* 组件级令牌 */
+    --header-height: 64px;
+    --card-padding: 22px 24px;
+    --article-body-width: 46rem;
+    --meta-letter-spacing: 0.01em;
+}
+
+/* ======================= 2. 深色令牌（与浅色一一成对） ======================= */
+[data-theme="dark"] {
+    --primary-color: #ef7a70;
+    --primary-hover: #f49289;
+    --primary-active: #e45757;
+    --primary-light: rgba(239, 122, 112, 0.14);
+    --primary-lighter: rgba(239, 122, 112, 0.07);
+    --primary-glow: rgba(239, 122, 112, 0.20);
+    --primary-gradient: linear-gradient(135deg, #ef7a70 0%, #d08a6e 100%);
+    --primary-gradient-hover: linear-gradient(135deg, #e2685e 0%, #bd7a5f 100%);
+
+    --accent-color: #4cbfb4;
+    --accent-light: rgba(76, 191, 180, 0.14);
+    --accent-glow: rgba(76, 191, 180, 0.22);
+
+    --success-color: #6cc29f;
+    --success-light: rgba(108, 194, 159, 0.14);
+    --success-glow: rgba(108, 194, 159, 0.24);
+    --danger-color: #ef8078;
+    --danger-light: rgba(239, 128, 120, 0.14);
+    --danger-glow: rgba(239, 128, 120, 0.24);
+    --warning-color: #dbb468;
+    --warning-light: rgba(219, 180, 104, 0.14);
+    --warning-glow: rgba(219, 180, 104, 0.24);
+    --info-color: #7fa6d8;
+    --info-light: rgba(127, 166, 216, 0.14);
+    --info-glow: rgba(127, 166, 216, 0.22);
+
+    --bg-color: #15181a;
+    --bg-subtle: #1b1f22;
+    --bg-elevated: #22262a;
+    --bg-hover: rgba(255, 255, 255, 0.05);
+    --card-bg: #202428;
+    --card-bg-solid: #202428;
+    --card-border: #2f353a;
+
+    --input-bg: #1d2124;
+    --input-border: #394047;
+    --input-focus-shadow: 0 0 0 3px var(--primary-light);
+    --code-bg: #101315;
+    --code-text: #e4e7e9;
+    --inline-code-bg: rgba(239, 122, 112, 0.16);
+    --inline-code-text: #f49289;
+
+    --text-color: #e9ebed;
+    --text-primary: #e9ebed;
+    --text-secondary: #a9b2ba;
+    --text-tertiary: #7f8991;
+    --text-light: #7f8991;
+    --text-muted: #626c75;
+    --text-inverse: #15181a;
+
+    --border-color: #33393f;
+    --border-subtle: #2a2f34;
+    --border-strong: #444b52;
+    --border-focus: var(--primary-color);
+
+    --hover-bg: rgba(255, 255, 255, 0.06);
+    --active-bg: rgba(255, 255, 255, 0.10);
+    --glass-bg: rgba(21, 24, 26, 0.86);
+    --glass-border: rgba(255, 255, 255, 0.09);
+    --glass-blur: blur(14px) saturate(1.05);
+
+    --shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.30);
+    --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.35), 0 1px 2px rgba(0, 0, 0, 0.20);
+    --shadow-md: 0 6px 18px rgba(0, 0, 0, 0.40);
+    --shadow-lg: 0 14px 34px rgba(0, 0, 0, 0.45);
+    --shadow-xl: 0 20px 44px rgba(0, 0, 0, 0.50);
+    --shadow-2xl: 0 28px 60px rgba(0, 0, 0, 0.60);
+    --shadow-inner: inset 0 1px 2px rgba(0, 0, 0, 0.30);
+    --shadow-glow: 0 0 0 4px var(--primary-lighter);
+    --shadow-glow-lg: 0 0 0 6px var(--primary-lighter);
+}
+
+/* ======================= 3. 全局基调 ======================= */
+body {
+    font-family: var(--font-sans);
+    letter-spacing: 0;
+    background-color: var(--bg-color);
+    background-image: none; /* 去掉粉底渐变，回到纸面 */
+}
+body::before { display: none; }
+
+::selection {
+    background: var(--primary-light);
+    color: var(--text-primary);
+}
+
+/* 全站自定义背景图（设置中心可配） */
+body.has-site-background {
+    background-image:
+        linear-gradient(rgba(247, 246, 243, var(--site-background-overlay)), rgba(247, 246, 243, var(--site-background-overlay))),
+        var(--site-background-image);
+    background-position: center, var(--site-background-position);
+    background-size: cover, var(--site-background-size);
+    background-attachment: fixed;
+    background-repeat: no-repeat;
+}
+[data-theme="dark"] body.has-site-background {
+    background-image:
+        linear-gradient(rgba(21, 24, 26, var(--site-background-overlay)), rgba(21, 24, 26, var(--site-background-overlay))),
+        var(--site-background-image);
+}
+/* ======================= 4. 首页低调登录入口 ======================= */
+/* 首页头部只保留一个弱化的人形图标（44px 触摸目标保留，视觉半透明、无底色），
+   其余页面维持原有「登录/注册」按钮，不影响已登录用户的所有入口。 */
+.header-quiet-entry {
+    width: 44px;
+    height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border: 1px solid transparent;
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--text-muted);
+    opacity: 0.55;
+    text-decoration: none;
+    cursor: pointer;
+    transition: opacity var(--duration-fast) ease,
+                color var(--duration-fast) ease,
+                background-color var(--duration-fast) ease;
+}
+
+.header-quiet-entry:hover,
+.header-quiet-entry:focus-visible {
+    opacity: 1;
+    color: var(--text-secondary);
+    background: var(--hover-bg);
+}
+
+.header-quiet-entry svg {
+    width: 17px;
+    height: 17px;
+}
+
+/* 移动端抽屉：首页底部只留一条弱化文字入口，替代两个大按钮 */
+.mobile-drawer-quiet-entry {
+    flex: 1;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 36px;
+    color: var(--text-muted);
+    font-size: 0.85rem;
+    font-weight: 500;
+    text-decoration: none;
+    opacity: 0.7;
+    transition: color var(--duration-fast) ease, opacity var(--duration-fast) ease;
+}
+
+.mobile-drawer-quiet-entry:hover,
+.mobile-drawer-quiet-entry:focus-visible {
+    color: var(--text-secondary);
+    opacity: 1;
+}
+
+/* ======================= 5. 遗留渐变令牌校准 ======================= */
+/* design-system.css 尾部的「少女风强化」层仍把粉紫渐变写在 :root，
+   与本主题的朱红/青绿冲突。这里在最后生效层重新定义为当前配色。 */
+:root {
+    --gradient-sakura: linear-gradient(135deg, #e45757 0%, #d08a6e 50%, #168a82 100%);
+    --gradient-sakura-soft: linear-gradient(135deg, rgba(228, 87, 87, 0.07) 0%, rgba(22, 138, 130, 0.06) 100%);
+    --gradient-sakura-hover: linear-gradient(135deg, #d04949 0%, #b96650 100%);
+}
+
+[data-theme="dark"] {
+    --gradient-sakura: linear-gradient(135deg, #ef7a70 0%, #d08a6e 50%, #4cbfb4 100%);
+    --gradient-sakura-soft: linear-gradient(135deg, rgba(239, 122, 112, 0.12) 0%, rgba(76, 191, 180, 0.10) 100%);
+    --gradient-sakura-hover: linear-gradient(135deg, #e2685e 0%, #bd7a5f 100%);
+}
+
+/* ======================= 6. 首页视觉微调 ======================= */
+/* Hero 背景去掉旧版紫色余晖，改用当前配色的极浅层次 */
+.home-hero {
+    background:
+        linear-gradient(135deg, var(--accent-light) 0%, transparent 46%),
+        linear-gradient(315deg, var(--primary-lighter) 0%, transparent 44%),
+        var(--card-bg);
+}
+
+/* 有全站背景图时，Hero 按钮改为中性白玻璃，替代旧版粉色玻璃 */
+.home-hero.has-bg .btn-hero {
+    background: rgba(255, 255, 255, 0.14);
+    border-color: rgba(255, 255, 255, 0.35);
+    color: #fff;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.18);
+    backdrop-filter: blur(8px) saturate(1.2);
+    -webkit-backdrop-filter: blur(8px) saturate(1.2);
+}
+
+.home-hero.has-bg .btn-hero:hover {
+    background: rgba(255, 255, 255, 0.24);
+    border-color: rgba(255, 255, 255, 0.55);
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.26);
+}
+
+/* 卡片头/侧栏头回归扁平纸面（安静编辑风），去掉上下渐变 */
+.card-header,
+.widget-header {
+    background: var(--card-bg);
+}
+
+/* .card-title 现在会用在 <h1> 上（页面主标题），显式压掉 UA 默认外边距 */
+.card-title {
+    margin: 0;
+}
+
+/* 文章标签底色直接使用主色浅底，替代旧粉紫渐变 */
+.tag {
+    background: var(--primary-lighter);
+    border-color: var(--primary-light);
+}
+
+/* 文章行悬停：标题轻微着色，增强可点暗示 */
+.article-title a {
+    transition: color var(--duration-fast) ease;
+}
+
+.article-item:hover .article-title a {
+    color: var(--primary-color);
+}
+
+/* ==================== 侧栏站点统计 ==================== */
+
+.stats-widget-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.stats-widget-cell {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    padding: 10px 6px;
+    border-radius: 10px;
+    background: var(--bg-secondary, rgba(0, 0, 0, 0.02));
+    transition: transform var(--duration-fast, 0.2s) ease;
+}
+
+.stats-widget-cell:hover {
+    transform: translateY(-2px);
+}
+
+.stats-widget-value {
+    font-size: 1.15rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+}
+
+.stats-widget-label {
+    font-size: 0.74rem;
+    color: var(--text-secondary, #8a8a9e);
+}
+
+/* ======================= 7. 深色模式遗留令牌校准 ======================= */
+/* style.css 的 [data-theme="dark"]（旧粉色主题）里还有几个本文件没有重定义的令牌，
+   深色下会露出粉色/浅色余味。这里在最后生效层补齐，保持深色一致。 */
+[data-theme="dark"] {
+    --secondary-color: #9aa4ad;
+    --gradient-card: linear-gradient(135deg, rgba(239, 122, 112, 0.05) 0%, rgba(76, 191, 180, 0.05) 100%);
+    /* style.css 的代码块用 --code-color，本主题统一用 --code-text，两者对齐避免浅底深字 */
+    --code-color: var(--code-text);
+    --shadow: var(--shadow-md);
+}
+
+/* ======================= 8. 评论回复入口 ======================= */
+/* 评论头部的「回复」按钮：低调、悬停才明显，避免抢评论内容的主次。
+   注意不要用 margin-left:auto —— .comment-time 已经靠 auto 把时间推到右侧，
+   再来一个 auto 会把剩余空间一分为二，时间被挤到中间。 */
+.comment-reply-btn {
+    flex: none;
+    padding: 2px 10px;
+    border: 1px solid transparent;
+    border-radius: var(--radius-full);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: inherit;
+    font-size: 0.76rem;
+    line-height: 1.6;
+    cursor: pointer;
+    transition: color var(--duration-fast, 0.2s) ease, background-color var(--duration-fast, 0.2s) ease, border-color var(--duration-fast, 0.2s) ease;
+}
+
+.comment-reply-btn:hover,
+.comment-reply-btn:focus-visible {
+    color: var(--primary-color);
+    background: var(--primary-lighter);
+    border-color: var(--primary-light);
+}
+
+/* 正在回复的提示条 */
+.comment-reply-notice {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 12px;
+    padding: 8px 12px;
+    border: 1px solid var(--primary-light);
+    border-left: 3px solid var(--primary-color);
+    border-radius: var(--radius-sm);
+    background: var(--primary-lighter);
+    color: var(--text-secondary);
+    font-size: 0.84rem;
+}
+
+/* display:flex 的类选择器特异度高于 UA 的 [hidden]{display:none}，
+   必须显式处理 hidden，否则未点「回复」时提示条也会一直显示 */
+.comment-reply-notice[hidden] {
+    display: none;
+}
+
+.comment-reply-notice strong {
+    color: var(--primary-color);
+}
+
+.comment-reply-cancel {
+    flex: none;
+    padding: 2px 8px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-tertiary);
+    font-family: inherit;
+    font-size: 0.78rem;
+    cursor: pointer;
+    transition: color var(--duration-fast, 0.2s) ease;
+}
+
+.comment-reply-cancel:hover,
+.comment-reply-cancel:focus-visible {
+    color: var(--danger-color);
+    text-decoration: underline;
+}
+
+/* ======================= 9. 主题切换过渡 ======================= */
+/* 由 JS 在切换主题的瞬间挂上 .theme-transitioning，只过渡颜色相关属性。
+   不要给 .header/.card/.article-item 写内联 transition —— 那会覆盖样式表里的
+   transform/opacity 过渡（智能头部收起、列表渐入动画）。 */
+.theme-transitioning,
+.theme-transitioning body,
+.theme-transitioning .card,
+.theme-transitioning .widget,
+.theme-transitioning .header,
+.theme-transitioning .footer,
+.theme-transitioning .article-item,
+.theme-transitioning .btn,
+.theme-transitioning .tag,
+.theme-transitioning .home-hero,
+.theme-transitioning .card-header,
+.theme-transitioning .widget-header {
+    transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease, box-shadow 0.3s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .theme-transitioning,
+    .theme-transitioning body,
+    .theme-transitioning .card,
+    .theme-transitioning .widget,
+    .theme-transitioning .header,
+    .theme-transitioning .footer,
+    .theme-transitioning .article-item,
+    .theme-transitioning .btn,
+    .theme-transitioning .tag,
+    .theme-transitioning .home-hero,
+    .theme-transitioning .card-header,
+    .theme-transitioning .widget-header {
+        transition: none;
+    }
+}
